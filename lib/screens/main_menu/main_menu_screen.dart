@@ -156,24 +156,42 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Coins counter (replaced water drops with coins icon)
-                    Row(
-                      children: [
-                        const Icon(
-                          LucideIcons.coins,
-                          color: Color(0xFFF1C40F), // Premium gold coin color
-                          size: 22,
+                    // Coins counter badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLight.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.textPrimary.withValues(alpha: 0.1),
+                          width: 1,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${progress.coins}',
-                          style: GoogleFonts.nunito(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.textPrimary,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            LucideIcons.coins,
+                            color: AppColors.coinGold,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${progress.coins}',
+                            style: GoogleFonts.nunito(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     Row(
@@ -187,13 +205,24 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: AppColors.surfaceLight,
-                              borderRadius: BorderRadius.circular(12),
+                              color: AppColors.surfaceLight.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.textPrimary.withValues(alpha: 0.1),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Icon(
                               LucideIcons.layoutGrid,
                               color: AppColors.textPrimary,
-                              size: 22,
+                              size: 20,
                             ),
                           ),
                         ),
@@ -208,13 +237,24 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: AppColors.surfaceLight,
-                              borderRadius: BorderRadius.circular(12),
+                              color: AppColors.surfaceLight.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.textPrimary.withValues(alpha: 0.1),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Icon(
                               Icons.settings_outlined,
                               color: AppColors.textPrimary,
-                              size: 22,
+                              size: 20,
                             ),
                           ),
                         ),
