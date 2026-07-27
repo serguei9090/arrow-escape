@@ -57,11 +57,7 @@ class _LivesBarState extends State<LivesBar> with SingleTickerProviderStateMixin
             // Heart body
             isFull
                 ? ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFF829079), Color(0xFF5E6B56)],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ).createShader(bounds),
+                    shaderCallback: (bounds) => AppColors.dangerGradient.createShader(bounds),
                     child: const Icon(
                       Icons.favorite,
                       color: Colors.white,
@@ -70,7 +66,7 @@ class _LivesBarState extends State<LivesBar> with SingleTickerProviderStateMixin
                   )
                 : Icon(
                     Icons.favorite_border,
-                    color: AppColors.surfaceLight,
+                    color: AppColors.heartEmpty,
                     size: 24,
                   ),
             // Glass/glossy reflection dot on top-left of active heart
