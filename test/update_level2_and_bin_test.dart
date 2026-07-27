@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:arrow_escape/data/level_generator/level_generator.dart';
 import 'package:arrow_escape/data/level_generator/solver.dart';
 import 'package:arrow_escape/data/models/level.dart';
-import 'package:arrow_escape/data/models/arrow.dart';
 import 'package:arrow_escape/data/level_binary_codec.dart';
 
 void main() {
