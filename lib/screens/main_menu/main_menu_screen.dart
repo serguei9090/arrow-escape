@@ -368,21 +368,21 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             final isDark = AppColors.isDark;
 
             if (!isUnlocked) {
-              bubbleColor = isDark ? const Color(0xFF2A3027) : const Color(0xFFD3CFC9); // Dark green-gray vs Grey
-              textColor = isDark ? const Color(0xFF5E6B56) : const Color(0xFF8B7365).withValues(alpha: 0.5);
+              bubbleColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1); // Dark Slate vs Slate Gray
+              textColor = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
             } else if (type == LevelType.god) {
-              bubbleColor = const Color(0xFFB33939); // Red for God levels
+              bubbleColor = const Color(0xFFEF4444); // Bright Coral Red for God levels
               textColor = Colors.white;
             } else if (type == LevelType.boss) {
-              bubbleColor = const Color(0xFF8E44AD); // Purple for Boss levels
+              bubbleColor = const Color(0xFF8B5CF6); // Bright Violet for Boss levels
               textColor = Colors.white;
             } else {
               bubbleColor = isCurrent 
-                  ? (isDark ? const Color(0xFFD48A55) : const Color(0xFFC08255)) 
-                  : (isDark ? const Color(0xFF3D473A) : const Color(0xFFE6DCC8));
+                  ? AppColors.primary 
+                  : (isDark ? const Color(0xFF1A2634) : const Color(0xFFFFFFFF));
               textColor = isCurrent 
                   ? Colors.white 
-                  : (isDark ? const Color(0xFFECF0EB) : const Color(0xFF8B7365));
+                  : AppColors.textPrimary;
             }
 
             return Container(
@@ -399,7 +399,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           height: 4,
                           color: lvl == 1
                               ? Colors.transparent
-                              : (isDark ? const Color(0xFF2A3027) : const Color(0xFFE5DEC9)),
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFDCE6ED)),
                         ),
                       ),
                       SizedBox(width: size),
@@ -408,7 +408,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           height: 4,
                           color: lvl == totalLevels
                               ? Colors.transparent
-                              : (isDark ? const Color(0xFF2A3027) : const Color(0xFFE5DEC9)),
+                              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFDCE6ED)),
                         ),
                       ),
                     ],
