@@ -35,7 +35,17 @@ class ProgressRepository extends ChangeNotifier {
   // Zoom hint state
   bool _hasSeenZoomHint = false;
 
+  // Hint and Solve items (defaults to 2 for new users)
+  int _hints = 2;
+  int _solves = 2;
+
+  // Item prices in coins
+  static const int hintCoinCost = 750;
+  static const int solveCoinCost = 1000;
+
   // ── Getters ──────────────────────────────────────────────────────────────────
+  int get hints => _hints;
+  int get solves => _solves;
   int get lives => _lives;
   int get maxLives => AppConstants.maxLives;
   int get currentLevel => _currentLevel;
@@ -76,6 +86,8 @@ class ProgressRepository extends ChangeNotifier {
     _totalScore = _prefs.getInt('totalScore') ?? 0;
     _coins = _prefs.getInt('coins') ?? 0;
     _streakDays = _prefs.getInt('streakDays') ?? 0;
+    _hints = _prefs.getInt('hints') ?? 2;
+    _solves = _prefs.getInt('solves') ?? 2;
 
     _soundEnabled = _prefs.getBool('soundEnabled') ?? true;
     _musicEnabled = _prefs.getBool('musicEnabled') ?? true;
@@ -123,6 +135,8 @@ class ProgressRepository extends ChangeNotifier {
       _prefs.setInt('totalScore', _totalScore),
       _prefs.setInt('coins', _coins),
       _prefs.setInt('streakDays', _streakDays),
+      _prefs.setInt('hints', _hints),
+      _prefs.setInt('solves', _solves),
       if (_lastPlayedDate != null)
         _prefs.setString('lastPlayedDate', _lastPlayedDate!.toIso8601String()),
     ]);
@@ -133,6 +147,62 @@ class ProgressRepository extends ChangeNotifier {
       resultsMap[entry.key.toString()] = entry.value.toJson();
     }
     await _prefs.setString('levelResults', jsonEncode(resultsMap));
+  }
+
+  // ── Hint and Solve Actions ────────────────────────────────────────────────
+
+  Future<bool> consumeHint() async {
+    if (_hints > 0) {
+      _hints--;
+      await _save();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> consumeSolve() async {
+    if (_solves > 0) {
+      _solves--;
+      await _save();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> addHints(int amount) async {
+    _hints += amount;
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> addSolves(int amount) async {
+    _solves += amount;
+    await _save();
+    notifyListeners();
+  }
+
+  Future<bool> buyHintsWithCoins() async {
+    if (_coins >= hintCoinCost) {
+      _coins -= hintCoinCost;
+      _hints += 2;
+      await _save();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> buySolvesWithCoins() async {
+    if (_coins >= solveCoinCost) {
+      _coins -= solveCoinCost;
+      _solves += 2;
+      await _save();
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   // ── Lives — restored only via rewarded ad or level restart ─────────────────

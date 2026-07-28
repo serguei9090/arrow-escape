@@ -504,6 +504,22 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
 
     canvas.save();
 
+    // ── 5.5. Draw hint outer pulsing glow if highlighted ─────────────────────
+    final isHinted = gameState.hintArrowId == arrowModel.id;
+    if (isHinted && !isAnimatingNow) {
+      final Path glowPath = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (int i = 1; i < pts.length; i++) glowPath.lineTo(pts[i].dx, pts[i].dy);
+
+      final glowPaint = Paint()
+        ..color = const Color(0xFFFFD700).withValues(alpha: 0.75) // Bright Gold Glow
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw * 2.8
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      canvas.drawPath(glowPath, glowPaint);
+    }
+
     // ── 6. Draw body ──────────────────────────────────────────────────────
     final Path bodyPath;
     if (isAnimatingNow) {
@@ -519,15 +535,15 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
     }
 
     final bodyPaint = Paint()
-      ..color = mainColor
+      ..color = isHinted ? const Color(0xFFFFD700) : mainColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = sw
+      ..strokeWidth = isHinted ? sw * 1.35 : sw
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(bodyPath, bodyPaint);
 
     // ── 7. Draw arrowhead at the head end (pts.first) ──────────────────────────────
-    _drawHead(canvas, pts, mainColor, sw);
+    _drawHead(canvas, pts, isHinted ? const Color(0xFFFFD700) : mainColor, isHinted ? sw * 1.35 : sw);
 
     // ── 8. Long-press preview overlay ────────────────────────────────────────────
     if (_isPreviewMode) {

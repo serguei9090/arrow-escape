@@ -19,6 +19,9 @@ class GameState extends ChangeNotifier {
   // Live orphan dot map (dots are removed when consumed by an exiting arrow)
   late Map<String, OrphanDotType> _orphanDots;
 
+  // Track active hint arrow highlight
+  String? _hintArrowId;
+
   // Track which colorGroups have had their key cleared
   final Set<int> _clearedColorGroups = {};
 
@@ -53,8 +56,41 @@ class GameState extends ChangeNotifier {
   bool get isDeadlocked => _isDeadlocked;
   int get arrowsRemaining => _arrows.length;
   LevelModel get level => _currentLevel;
+  String? get hintArrowId => _hintArrowId;
   /// Live orphan dots remaining (consumed dots are absent from this map).
   Map<String, OrphanDotType> get orphanDots => _orphanDots;
+
+  void setHintArrow(String? arrowId) {
+    _hintArrowId = arrowId;
+    notifyListeners();
+  }
+
+  /// Finds the first unblocked arrow (or color-paired group) that can safely exit right now.
+  String? findNextSolvableArrowId() {
+    if (_arrows.isEmpty) return null;
+
+    for (final arrow in _arrows) {
+      if (arrow.state == ArrowState.sliding) continue;
+
+      final grp = arrow.colorGroup;
+      if (grp != null) {
+        final groupArrows = _arrows.where((a) => a.colorGroup == grp).toList();
+        if (groupArrows.length == 2) {
+          final exit1 = _computeExitInfo(groupArrows[0], groupArrows[1].id);
+          final exit2 = _computeExitInfo(groupArrows[1], groupArrows[0].id);
+          if (!exit1.blocked && !exit2.blocked) {
+            return arrow.id;
+          }
+        }
+      } else {
+        final exit = _computeExitInfo(arrow);
+        if (!exit.blocked) {
+          return arrow.id;
+        }
+      }
+    }
+    return null;
+  }
 
   /// Called by the ArrowComponent when its exit animation completes.
   void handleArrowExitCompleted(String arrowId) {

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
-import 'package:flame/game.dart';
+import 'package:flame/game.dart' hide Matrix4;
 import 'package:provider/provider.dart';
 import '../../widgets/unified_banner_ad.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -43,6 +43,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int _lives = AppConstants.maxLives;
   int? _loadedLevelNum;
   bool _isLoadingLevel = false; // true while level is being generated async
+
+  // InteractiveViewer controller for hint zoom/pan focus
+  final TransformationController _transformationController = TransformationController();
 
   // Timer fields
   Timer? _levelTimer;
@@ -481,6 +484,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _levelTimer?.cancel();
     _gameState?.removeListener(_onGameStateChanged);
     _confettiController.dispose();
+    _transformationController.dispose();
     super.dispose();
   }
 
@@ -607,6 +611,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       return _LevelLoadingScreen(levelNumber: levelNum);
     }
 
+    final progress = context.watch<ProgressRepository>();
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
 
     // Calculate level progress
@@ -654,9 +659,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Measure the real screen area BEFORE entering InteractiveViewer
-                    // (InteractiveViewer gives unbounded constraints to its children,
-                    // so LayoutBuilder must be OUTSIDE to get finite values).
                     final boardSize =
                         min(constraints.maxWidth, constraints.maxHeight - 16);
                     return ShaderMask(
@@ -680,6 +682,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       },
                       blendMode: BlendMode.dstIn,
                       child: InteractiveViewer(
+                        transformationController: _transformationController,
                         minScale: 0.8,
                         maxScale: 4.0,
                         boundaryMargin: const EdgeInsets.all(60),
@@ -696,6 +699,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   },
                 ),
               ),
+
+              // ── Bottom Action Bar (Hint & Solve) ──────────────────────────
+              _buildBottomActionBar(progress),
 
               // ── Banner Ad (centered and sized to avoid layout warnings) ──
               Container(
@@ -731,6 +737,265 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               ),
             )
           : null,
+    );
+  }
+
+  Widget _buildBottomActionBar(ProgressRepository progress) {
+    if (_showingComplete || _showingGameOver || _isLoadingLevel) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // ── Hint Button ────────────────────────────────────────────────────
+          _ActionButton(
+            label: 'Hint',
+            count: progress.hints,
+            icon: LucideIcons.lightbulb,
+            accentColor: AppColors.accentGold,
+            onTap: () => _handleHintAction(progress),
+          ),
+          const SizedBox(width: 16),
+
+          // ── Solve Next Step Button ──────────────────────────────────────────
+          _ActionButton(
+            label: 'Solve Step',
+            count: progress.solves,
+            icon: LucideIcons.wand2,
+            accentColor: AppColors.primary,
+            onTap: () => _handleSolveAction(progress),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleHintAction(ProgressRepository progress) async {
+    if (_gameState == null) return;
+    AudioManager.instance.playClick();
+
+    if (progress.hints > 0) {
+      final hintId = _gameState!.findNextSolvableArrowId();
+      if (hintId == null) {
+        _showToast('No solvable arrow found! Board might be deadlocked.');
+        return;
+      }
+
+      await progress.consumeHint();
+      _gameState!.setHintArrow(hintId);
+      _focusOnArrow(hintId);
+      _showToast('Hint highlighted! Tap the glowing arrow.');
+    } else {
+      _showItemStoreDialog(
+        title: 'Out of Hints!',
+        itemType: 'Hint',
+        count: 2,
+        coinCost: ProgressRepository.hintCoinCost,
+        icon: LucideIcons.lightbulb,
+        iconColor: AppColors.accentGold,
+        onWatchAd: () async {
+          final adManager = context.read<AdManager>();
+          await adManager.showRewarded(
+            onRewarded: () {
+              progress.addHints(2);
+              _showToast('Received +2 Hints!');
+            },
+          );
+        },
+        onBuyCoins: () async {
+          final success = await progress.buyHintsWithCoins();
+          if (success) {
+            _showToast('Purchased 2 Hints for ${ProgressRepository.hintCoinCost} coins!');
+          } else {
+            _showToast('Not enough coins! Need ${ProgressRepository.hintCoinCost} coins.');
+          }
+        },
+      );
+    }
+  }
+
+  Future<void> _handleSolveAction(ProgressRepository progress) async {
+    if (_gameState == null) return;
+    AudioManager.instance.playClick();
+
+    if (progress.solves > 0) {
+      final hintId = _gameState!.findNextSolvableArrowId();
+      if (hintId == null) {
+        _showToast('No solvable arrow found! Board might be deadlocked.');
+        return;
+      }
+
+      await progress.consumeSolve();
+      _gameState!.setHintArrow(null);
+      _gameState!.tapArrow(hintId);
+      _showToast('Solved 1 step!');
+    } else {
+      _showItemStoreDialog(
+        title: 'Out of Solves!',
+        itemType: 'Solve',
+        count: 2,
+        coinCost: ProgressRepository.solveCoinCost,
+        icon: LucideIcons.wand2,
+        iconColor: AppColors.primary,
+        onWatchAd: () async {
+          final adManager = context.read<AdManager>();
+          await adManager.showRewarded(
+            onRewarded: () {
+              progress.addSolves(2);
+              _showToast('Received +2 Solves!');
+            },
+          );
+        },
+        onBuyCoins: () async {
+          final success = await progress.buySolvesWithCoins();
+          if (success) {
+            _showToast('Purchased 2 Solves for ${ProgressRepository.solveCoinCost} coins!');
+          } else {
+            _showToast('Not enough coins! Need ${ProgressRepository.solveCoinCost} coins.');
+          }
+        },
+      );
+    }
+  }
+
+  void _focusOnArrow(String arrowId) {
+    if (_gameState == null) return;
+    final arrow = _gameState!.arrows.firstWhere(
+      (a) => a.id == arrowId,
+      orElse: () => _gameState!.arrows.first,
+    );
+
+    final head = arrow.path.first;
+    final gridSize = _gameState!.level.gridSize;
+    final targetX = (head[1] + 0.5) / gridSize;
+    final targetY = (head[0] + 0.5) / gridSize;
+
+    // Zoom gently onto the target hint arrow
+    // ignore: deprecated_member_use
+    final Matrix4 matrix = Matrix4.identity()
+      // ignore: deprecated_member_use
+      ..translate(-targetX * 60, -targetY * 60)
+      // ignore: deprecated_member_use
+      ..scale(1.25);
+    _transformationController.value = matrix;
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: GoogleFonts.nunito(
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _showItemStoreDialog({
+    required String title,
+    required String itemType,
+    required int count,
+    required int coinCost,
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onWatchAd,
+    required VoidCallback onBuyCoins,
+  }) async {
+    final progress = context.read<ProgressRepository>();
+
+    await showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.surfaceLight, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: iconColor.withValues(alpha: 0.2),
+                blurRadius: 24,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: iconColor, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: GoogleFonts.nunito(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get +$count $itemType items to help solve this level',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Option 1: Watch Ad for +2
+              _DialogButton(
+                label: 'Watch Ad (+$count $itemType)',
+                icon: LucideIcons.tv,
+                gradient: AppColors.successGradient,
+                onTap: () {
+                  Navigator.pop(context);
+                  onWatchAd();
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // Option 2: Buy with Coins
+              _DialogButton(
+                label: 'Buy for $coinCost Coins (Have ${progress.coins})',
+                icon: LucideIcons.coins,
+                gradient: AppColors.primaryGradient,
+                onTap: () {
+                  Navigator.pop(context);
+                  onBuyCoins();
+                },
+              ),
+              const SizedBox(height: 12),
+
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.nunito(
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1420,40 +1685,87 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final progressRepo = context.watch<ProgressRepository>();
+
     return Container(
       height: 115,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Left Side (Back Button aligned left)
+          // Left Side (Back Button & Coin Badge aligned left)
           Align(
             alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () {
-                AudioManager.instance.playClick();
-                onBack();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: AppColors.textPrimary.withValues(alpha: 0.1),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    AudioManager.instance.playClick();
+                    onBack();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppColors.textPrimary.withValues(alpha: 0.1),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: Icon(LucideIcons.arrowLeft,
+                        color: AppColors.textPrimary, size: 20),
+                  ),
                 ),
-                child: Icon(LucideIcons.arrowLeft,
-                    color: AppColors.textPrimary, size: 20),
-              ),
+                const SizedBox(width: 8),
+
+                // Coins counter badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.textPrimary.withValues(alpha: 0.1),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.coins,
+                        color: AppColors.coinGold,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${progressRepo.coins}',
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -2744,6 +3056,88 @@ class _GodLoadingScreenState extends State<_GodLoadingScreen>
               ),
               const SizedBox(height: 36),
               _BouncingDots(color: _godPurple),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Action Button for Bottom Bar (Hint & Solve) ──────────────────────────────
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppColors.isDark;
+    final isDisabled = count <= 0;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A2634) : const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: accentColor.withValues(alpha: isDisabled ? 0.3 : 0.6),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withValues(alpha: isDisabled ? 0.05 : 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: isDisabled ? AppColors.textMuted : accentColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: isDisabled ? AppColors.textMuted : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (isDisabled ? AppColors.textMuted : accentColor).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'x$count',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: isDisabled ? AppColors.textMuted : accentColor,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
