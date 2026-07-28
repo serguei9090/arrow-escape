@@ -1,55 +1,66 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../core/constants.dart';
 
-/// Central ad orchestrator — manages banner, interstitial, and rewarded ads.
-/// Uses a waterfall fallback strategy: AdMob (Priority 1) -> Unity Ads (Priority 2).
-/// Each ad network can be toggled on/off dynamically in AppConstants.
+/// Central ad manager using Google Mobile Ads SDK with AdMob Mediation support.
+/// Features:
+/// 1. Google UMP (User Messaging Platform) GDPR/Consent Flow.
+/// 2. Exponential backoff retry strategy (prevents infinite loops and micro-stutters).
+/// 3. Memory leak protection (proper disposal of failed/timed-out ad instances).
+/// 4. Seamless rewarded ad fallback.
 class AdManager {
-  // ── AdMob state ──────────────────────────────────────────────────────────────
+  // ── AdMob State ─────────────────────────────────────────────────────────────
   InterstitialAd? _admobInterstitial;
   bool _isAdmobInterstitialLoaded = false;
+  int _interstitialRetryCount = 0;
 
   RewardedAd? _admobRewarded;
   bool _isAdmobRewardedLoaded = false;
+  int _rewardedRetryCount = 0;
+
   int _levelsSinceLastInterstitial = 0;
+  bool _isInitialized = false;
 
-  // ── Unity Ads state ───────────────────────────────────────────────────────────
-  bool _isUnityInitialized = false;
-  bool _isUnityInterstitialLoaded = false;
-  bool _isUnityRewardedLoaded = false;
+  bool get isInitialized => _isInitialized;
 
-  // ── Initialization ────────────────────────────────────────────────────────────
-  void initialize() {
-    // 1. Initialize and load AdMob if enabled
-    if (AppConstants.enableAdMob) {
-      _loadAdmobInterstitial();
-      _loadAdmobRewarded();
-    }
+  // ── Initialization & UMP Consent ───────────────────────────────────────────
+  Future<void> initialize() async {
+    if (!AppConstants.enableAdMob) return;
 
-    // 2. Initialize and load Unity Ads if enabled
-    if (AppConstants.enableUnityAds) {
-      UnityAds.init(
-        gameId: AppConstants.unityGameId,
-        testMode: AppConstants.unityTestMode,
-        onComplete: () {
-          _isUnityInitialized = true;
-          _loadUnityInterstitial();
-          _loadUnityRewarded();
-        },
-        onFailed: (error, message) {
-          _isUnityInitialized = false;
-          debugPrint('Unity Ads Initialization failed: $error - $message');
-        },
-      );
-    }
+    final params = ConsentRequestParameters();
+    ConsentInformation.instance.requestConsentInfoUpdate(
+      params,
+      () async {
+        if (await ConsentInformation.instance.isConsentFormAvailable()) {
+          await ConsentForm.loadAndShowConsentFormIfRequired((formError) async {
+            if (formError != null) {
+              debugPrint('AdMob UMP Form Error: ${formError.message}');
+            }
+            await _initMobileAds();
+          });
+        } else {
+          await _initMobileAds();
+        }
+      },
+      (error) async {
+        debugPrint('AdMob UMP Request Error: ${error.message}');
+        await _initMobileAds();
+      },
+    );
   }
 
-  // ── AdMob Loading ─────────────────────────────────────────────────────────────
+  Future<void> _initMobileAds() async {
+    await MobileAds.instance.initialize();
+    _isInitialized = true;
+    _loadAdmobInterstitial();
+    _loadAdmobRewarded();
+  }
+
+  // ── Interstitial Ad Management ─────────────────────────────────────────────
   void _loadAdmobInterstitial() {
-    if (!AppConstants.enableAdMob) return;
+    if (!AppConstants.enableAdMob || _isAdmobInterstitialLoaded) return;
+
     InterstitialAd.load(
       adUnitId: AppConstants.admobInterstitialUnitId,
       request: const AdRequest(),
@@ -57,20 +68,30 @@ class AdManager {
         onAdLoaded: (ad) {
           _admobInterstitial = ad;
           _isAdmobInterstitialLoaded = true;
+          _interstitialRetryCount = 0; // Reset backoff counter on success
           ad.setImmersiveMode(true);
+          debugPrint('AdMob: Interstitial loaded successfully.');
         },
         onAdFailedToLoad: (error) {
           _isAdmobInterstitialLoaded = false;
           _admobInterstitial = null;
-          // Retry after delay
-          Future.delayed(const Duration(seconds: 15), () => _loadAdmobInterstitial());
+          debugPrint('AdMob: Interstitial failed to load ($error). Retry count: $_interstitialRetryCount');
+
+          // Exponential backoff: 5s, 15s, 45s (max 3 retries)
+          if (_interstitialRetryCount < 3) {
+            _interstitialRetryCount++;
+            final delay = Duration(seconds: 5 * _interstitialRetryCount * _interstitialRetryCount);
+            Future.delayed(delay, () => _loadAdmobInterstitial());
+          }
         },
       ),
     );
   }
 
+  // ── Rewarded Ad Management ──────────────────────────────────────────────────
   void _loadAdmobRewarded() {
-    if (!AppConstants.enableAdMob) return;
+    if (!AppConstants.enableAdMob || _isAdmobRewardedLoaded) return;
+
     RewardedAd.load(
       adUnitId: AppConstants.admobRewardedUnitId,
       request: const AdRequest(),
@@ -78,56 +99,28 @@ class AdManager {
         onAdLoaded: (ad) {
           _admobRewarded = ad;
           _isAdmobRewardedLoaded = true;
+          _rewardedRetryCount = 0; // Reset backoff counter on success
+          debugPrint('AdMob: Rewarded ad loaded successfully.');
         },
         onAdFailedToLoad: (error) {
           _isAdmobRewardedLoaded = false;
           _admobRewarded = null;
-          // Retry after delay
-          Future.delayed(const Duration(seconds: 15), () => _loadAdmobRewarded());
+          debugPrint('AdMob: Rewarded ad failed to load ($error). Retry count: $_rewardedRetryCount');
+
+          // Exponential backoff: 5s, 15s, 45s (max 3 retries)
+          if (_rewardedRetryCount < 3) {
+            _rewardedRetryCount++;
+            final delay = Duration(seconds: 5 * _rewardedRetryCount * _rewardedRetryCount);
+            Future.delayed(delay, () => _loadAdmobRewarded());
+          }
         },
       ),
     );
   }
 
-
-
-  // ── Unity Ads Loading ──────────────────────────────────────────────────────────
-  void _loadUnityInterstitial() {
-    if (!AppConstants.enableUnityAds || !_isUnityInitialized) return;
-    UnityAds.load(
-      placementId: AppConstants.unityInterstitialAdId,
-      onComplete: (placementId) {
-        _isUnityInterstitialLoaded = true;
-      },
-      onFailed: (placementId, error, message) {
-        _isUnityInterstitialLoaded = false;
-        Future.delayed(const Duration(seconds: 25), () => _loadUnityInterstitial());
-      },
-    );
-  }
-
-  void _loadUnityRewarded() {
-    if (!AppConstants.enableUnityAds || !_isUnityInitialized) return;
-    UnityAds.load(
-      placementId: AppConstants.unityRewardedAdId,
-      onComplete: (placementId) {
-        _isUnityRewardedLoaded = true;
-      },
-      onFailed: (placementId, error, message) {
-        _isUnityRewardedLoaded = false;
-        Future.delayed(const Duration(seconds: 25), () => _loadUnityRewarded());
-      },
-    );
-  }
-
-  // ── Compatibility Getters ─────────────────────────────────────────────────────
-  BannerAd? get gameBannerAd => null;
-  BannerAd? get homeBannerAd => null;
-  BannerAd? get bannerAd => null;
-
-  // ── Interstitial Logic (Waterfall) ───────────────────────────────────────────
+  // ── Interstitial Flow ──────────────────────────────────────────────────────
   Future<void> onLevelComplete(int levelNumber, bool isSpecialLevel) async {
-    if (isSpecialLevel) return; // No ads on boss/god levels
+    if (isSpecialLevel) return; // No interstitial ads on boss/god levels
     _levelsSinceLastInterstitial++;
     if (_levelsSinceLastInterstitial >= AppConstants.interstitialEveryNLevels) {
       await showInterstitial();
@@ -135,137 +128,58 @@ class AdManager {
   }
 
   Future<void> showInterstitial() async {
-    final completer = Completer<void>();
+    if (!AppConstants.enableAdMob) return;
 
-    // 1. Try AdMob (Priority 1) if enabled
-    if (AppConstants.enableAdMob && _isAdmobInterstitialLoaded && _admobInterstitial != null) {
+    if (_isAdmobInterstitialLoaded && _admobInterstitial != null) {
+      final completer = Completer<void>();
+      final ad = _admobInterstitial!;
+      _admobInterstitial = null;
+      _isAdmobInterstitialLoaded = false;
       _levelsSinceLastInterstitial = 0;
-      _admobInterstitial!.fullScreenContentCallback = FullScreenContentCallback(
+
+      ad.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
-          _isAdmobInterstitialLoaded = false;
-          _loadAdmobInterstitial(); // Pre-load next
+          _loadAdmobInterstitial(); // Pre-load next ad
           if (!completer.isCompleted) completer.complete();
         },
         onAdFailedToShowFullScreenContent: (ad, error) {
           ad.dispose();
-          _isAdmobInterstitialLoaded = false;
           _loadAdmobInterstitial();
-          // Fallback to Unity Ads (Priority 2)
-          _showUnityInterstitial(completer);
-        },
-      );
-      await _admobInterstitial!.show();
-    } else {
-      // Fallback to Unity Ads (Priority 2)
-      _showUnityInterstitial(completer);
-    }
-
-    return completer.future;
-  }
-
-  void _showUnityInterstitial(Completer<void> completer) {
-    if (AppConstants.enableUnityAds && _isUnityInitialized && _isUnityInterstitialLoaded) {
-      _levelsSinceLastInterstitial = 0;
-      UnityAds.showVideoAd(
-        placementId: AppConstants.unityInterstitialAdId,
-        onComplete: (placementId) {
-          _isUnityInterstitialLoaded = false;
-          _loadUnityInterstitial();
-          if (!completer.isCompleted) completer.complete();
-        },
-        onFailed: (placementId, error, message) {
-          _isUnityInterstitialLoaded = false;
-          _loadUnityInterstitial();
-          if (!completer.isCompleted) completer.complete();
-        },
-        onSkipped: (placementId) {
-          _isUnityInterstitialLoaded = false;
-          _loadUnityInterstitial();
           if (!completer.isCompleted) completer.complete();
         },
       );
+
+      await ad.show();
+      return completer.future;
     } else {
-      if (!completer.isCompleted) completer.complete();
+      // Ad not ready: trigger background load without blocking game flow
+      _loadAdmobInterstitial();
     }
   }
 
-  // ── On-Demand Loading Helpers for Fallback ────────────────────────────────────
-  Future<RewardedAd?> _loadAdmobRewardedOnDemand(Duration timeout) {
-    final completer = Completer<RewardedAd?>();
-    RewardedAd.load(
-      adUnitId: AppConstants.admobRewardedUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          if (!completer.isCompleted) completer.complete(ad);
-        },
-        onAdFailedToLoad: (error) {
-          if (!completer.isCompleted) completer.complete(null);
-        },
-      ),
-    );
+  // ── Rewarded Flow ──────────────────────────────────────────────────────────
+  bool get isRewardedAvailable => AppConstants.enableAdMob;
 
-    return completer.future.timeout(
-      timeout,
-      onTimeout: () {
-        if (!completer.isCompleted) completer.complete(null);
-        return null;
-      },
-    );
-  }
-
-  Future<InterstitialAd?> _loadAdmobInterstitialOnDemand(Duration timeout) {
-    final completer = Completer<InterstitialAd?>();
-    InterstitialAd.load(
-      adUnitId: AppConstants.admobInterstitialUnitId,
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          ad.setImmersiveMode(true);
-          if (!completer.isCompleted) completer.complete(ad);
-        },
-        onAdFailedToLoad: (error) {
-          if (!completer.isCompleted) completer.complete(null);
-        },
-      ),
-    );
-
-    return completer.future.timeout(
-      timeout,
-      onTimeout: () {
-        if (!completer.isCompleted) completer.complete(null);
-        return null;
-      },
-    );
-  }
-
-  // ── Rewarded Logic (Waterfall) ────────────────────────────────────────────────
-  bool get isRewardedAvailable {
-    return AppConstants.enableAdMob || AppConstants.enableUnityAds;
-  }
-
-  /// Shows a rewarded ad with a robust multi-tier fallback mechanism:
-  /// 1. Pre-loaded AdMob Rewarded Ad
-  /// 2. Fast On-Demand AdMob Rewarded Ad load
-  /// 3. Pre-loaded AdMob Interstitial Ad (backup ad for reward)
-  /// 4. Fast On-Demand AdMob Interstitial Ad load
-  /// 5. Unity Rewarded / Interstitial Ads (if enabled)
-  /// 6. Direct reward fallback if ad network inventory is unavailable
   Future<void> showRewarded({
     required void Function() onRewarded,
     void Function()? onDismissed,
   }) async {
+    bool rewardEarned = false;
+
     void handleSuccess() {
-      onRewarded();
+      if (!rewardEarned) {
+        rewardEarned = true;
+        onRewarded();
+      }
     }
 
     void handleFinish() {
       onDismissed?.call();
     }
 
-    // Tier 1: Pre-loaded AdMob Rewarded Ad
-    if (AppConstants.enableAdMob && _isAdmobRewardedLoaded && _admobRewarded != null) {
+    // 1. Try pre-loaded rewarded ad
+    if (_isAdmobRewardedLoaded && _admobRewarded != null) {
       final ad = _admobRewarded!;
       _admobRewarded = null;
       _isAdmobRewardedLoaded = false;
@@ -276,158 +190,90 @@ class AdManager {
           _loadAdmobRewarded();
           handleFinish();
         },
-        onAdFailedToShowFullScreenContent: (ad, error) async {
+        onAdFailedToShowFullScreenContent: (ad, error) {
           ad.dispose();
           _loadAdmobRewarded();
-          await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
+          // Fallback reward on show failure so player isn't stuck
+          handleSuccess();
+          handleFinish();
         },
       );
 
       await ad.show(
-        onUserEarnedReward: (_, reward) {
+        onUserEarnedReward: (ad, rewardItem) {
+          debugPrint('AdMob: Rewarded ad completed! Granted: ${rewardItem.amount} ${rewardItem.type}');
           handleSuccess();
         },
       );
       return;
     }
 
-    // Tier 2: Try fast on-demand load of AdMob Rewarded Ad (up to 3 seconds)
-    if (AppConstants.enableAdMob) {
-      final onDemandAd = await _loadAdmobRewardedOnDemand(const Duration(seconds: 3));
-      if (onDemandAd != null) {
-        onDemandAd.fullScreenContentCallback = FullScreenContentCallback(
-          onAdDismissedFullScreenContent: (ad) {
-            ad.dispose();
-            _loadAdmobRewarded();
-            handleFinish();
-          },
-          onAdFailedToShowFullScreenContent: (ad, error) async {
-            ad.dispose();
-            _loadAdmobRewarded();
-            await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
-          },
-        );
-
-        await onDemandAd.show(
-          onUserEarnedReward: (_, reward) {
-            handleSuccess();
-          },
-        );
-        return;
-      }
-    }
-
-    // Tier 3 & beyond: Fallback cascade
-    await _showRewardedFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
-  }
-
-  Future<void> _showRewardedFallback({
-    required VoidCallback handleSuccess,
-    required VoidCallback handleFinish,
-  }) async {
-    // Fallback 1: Pre-loaded AdMob Interstitial
-    if (AppConstants.enableAdMob && _isAdmobInterstitialLoaded && _admobInterstitial != null) {
-      final ad = _admobInterstitial!;
-      _admobInterstitial = null;
-      _isAdmobInterstitialLoaded = false;
-      _levelsSinceLastInterstitial = 0;
-
-      ad.fullScreenContentCallback = FullScreenContentCallback(
+    // 2. Try fast 3-second on-demand load
+    final onDemandAd = await _loadAdmobRewardedOnDemand(const Duration(seconds: 3));
+    if (onDemandAd != null) {
+      onDemandAd.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
-          _loadAdmobInterstitial();
-          handleSuccess(); // Grant reward since user watched fallback ad!
+          _loadAdmobRewarded();
           handleFinish();
         },
-        onAdFailedToShowFullScreenContent: (ad, error) async {
+        onAdFailedToShowFullScreenContent: (ad, error) {
           ad.dispose();
-          _loadAdmobInterstitial();
-          await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
-        },
-      );
-
-      await ad.show();
-      return;
-    }
-
-    // Fallback 2: Fast On-demand AdMob Interstitial
-    if (AppConstants.enableAdMob) {
-      final onDemandInter = await _loadAdmobInterstitialOnDemand(const Duration(seconds: 3));
-      if (onDemandInter != null) {
-        onDemandInter.fullScreenContentCallback = FullScreenContentCallback(
-          onAdDismissedFullScreenContent: (ad) {
-            ad.dispose();
-            _loadAdmobInterstitial();
-            handleSuccess();
-            handleFinish();
-          },
-          onAdFailedToShowFullScreenContent: (ad, error) async {
-            ad.dispose();
-            _loadAdmobInterstitial();
-            await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
-          },
-        );
-
-        await onDemandInter.show();
-        return;
-      }
-    }
-
-    // Fallback 3: Unity Ads / Direct Reward
-    await _showUnityOrDirectFallback(handleSuccess: handleSuccess, handleFinish: handleFinish);
-  }
-
-  Future<void> _showUnityOrDirectFallback({
-    required VoidCallback handleSuccess,
-    required VoidCallback handleFinish,
-  }) async {
-    if (AppConstants.enableUnityAds && _isUnityInitialized && _isUnityRewardedLoaded) {
-      _showUnityRewarded(
-        onRewarded: () {
+          _loadAdmobRewarded();
           handleSuccess();
           handleFinish();
         },
-        onDismissed: handleFinish,
+      );
+
+      await onDemandAd.show(
+        onUserEarnedReward: (ad, rewardItem) {
+          debugPrint('AdMob: Rewarded ad completed! Granted: ${rewardItem.amount} ${rewardItem.type}');
+          handleSuccess();
+        },
       );
       return;
     }
 
-    // Final Fallback: Network/Ad Inventory failed — grant reward so 2x button always works for user!
-    debugPrint('AdMob & Unity ads unavailable. Granting reward fallback.');
+    // 3. Fallback: If ad network has no inventory, grant reward so player feature works
+    debugPrint('AdMob ad inventory unavailable. Granting fallback reward.');
     handleSuccess();
     handleFinish();
+    _loadAdmobRewarded();
   }
 
-  void _showUnityRewarded({
-    required void Function() onRewarded,
-    void Function()? onDismissed,
-  }) {
-    if (AppConstants.enableUnityAds && _isUnityInitialized && _isUnityRewardedLoaded) {
-      UnityAds.showVideoAd(
-        placementId: AppConstants.unityRewardedAdId,
-        onComplete: (placementId) {
-          _isUnityRewardedLoaded = false;
-          _loadUnityRewarded();
-          onRewarded();
+  Future<RewardedAd?> _loadAdmobRewardedOnDemand(Duration timeout) {
+    final completer = Completer<RewardedAd?>();
+    RewardedAd.load(
+      adUnitId: AppConstants.admobRewardedUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          if (!completer.isCompleted) {
+            completer.complete(ad);
+          } else {
+            // Received after timeout expired: dispose immediately to avoid memory leaks
+            ad.dispose();
+          }
         },
-        onFailed: (placementId, error, message) {
-          _isUnityRewardedLoaded = false;
-          _loadUnityRewarded();
-          onDismissed?.call();
+        onAdFailedToLoad: (error) {
+          if (!completer.isCompleted) completer.complete(null);
         },
-        onSkipped: (placementId) {
-          _isUnityRewardedLoaded = false;
-          _loadUnityRewarded();
-          onDismissed?.call();
-        },
-      );
-    } else {
-      onDismissed?.call();
-    }
+      ),
+    );
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        if (!completer.isCompleted) completer.complete(null);
+        return null;
+      },
+    );
   }
 
   void dispose() {
     _admobInterstitial?.dispose();
     _admobRewarded?.dispose();
+    _admobInterstitial = null;
+    _admobRewarded = null;
   }
 }

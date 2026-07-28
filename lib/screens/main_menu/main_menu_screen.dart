@@ -307,7 +307,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 width: double.infinity,
                 height: 50,
                 margin: const EdgeInsets.only(bottom: 8),
-                child: const UnifiedBannerAd(
+                child: UnifiedBannerAd(
                   admobUnitId: AppConstants.admobBannerUnitId,
                   unityPlacementId: AppConstants.unityBannerAdId,
                 ),

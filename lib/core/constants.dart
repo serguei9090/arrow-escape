@@ -1,6 +1,6 @@
 
 
-import 'ad_secrets.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Core game constants
 class AppConstants {
@@ -25,11 +25,15 @@ class AppConstants {
   static const int bossLevelEvery = 3;   // Every 3rd level is BOSS
   static const int godLevelEvery  = 5;   // Every 5th level is GOD (overrides boss)
 
-  // Ads
-  static const String admobAppIdAndroid    = AdSecrets.admobAppIdAndroid;
-  static const String admobBannerUnitId    = AdSecrets.admobBannerUnitId;
-  static const String admobInterstitialUnitId = AdSecrets.admobInterstitialUnitId;
-  static const String admobRewardedUnitId  = AdSecrets.admobRewardedUnitId;
+  // Ads (loaded from .env with Google Test ID fallbacks)
+  static String get admobAppIdAndroid =>
+      dotenv.env['ADMOB_APP_ID_ANDROID'] ?? 'ca-app-pub-3940256099942544~3347511713';
+  static String get admobBannerUnitId =>
+      dotenv.env['ADMOB_BANNER_ID'] ?? 'ca-app-pub-3940256099942544/6300978111';
+  static String get admobInterstitialUnitId =>
+      dotenv.env['ADMOB_INTERSTITIAL_ID'] ?? 'ca-app-pub-3940256099942544/1033173712';
+  static String get admobRewardedUnitId =>
+      dotenv.env['ADMOB_REWARDED_ID'] ?? 'ca-app-pub-3940256099942544/5224354917';
 
   static const String unityGameId       = 'YOUR_UNITY_GAME_ID';
   static const String unityBannerAdId   = 'Banner_Android';

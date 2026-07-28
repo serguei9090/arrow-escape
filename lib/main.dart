@@ -4,6 +4,8 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'core/constants.dart';
 
 import 'app.dart';
@@ -14,6 +16,13 @@ import 'core/audio_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables (.env file)
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    debugPrint('dotenv error: $e. Falling back to default test credentials.');
+  }
 
   // Initialize AudioManager
   await AudioManager.instance.initialize();

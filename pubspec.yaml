@@ -40,6 +40,7 @@ dependencies:
   url_launcher: ^6.3.0
   lucide_icons_flutter: ^3.1.14+2
   in_app_update: ^5.0.0
+  flutter_dotenv: ^6.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -50,6 +51,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - .env
     - assets/images/
     - assets/audio/
     - assets/fonts/

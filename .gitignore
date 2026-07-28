@@ -110,6 +110,7 @@ test/verify_all_levels_test.dart
 test/verify_bin_solvability_test.dart
 
 # Sensitive Local Secrets
+.env
 lib/core/ad_secrets.dart
 
 

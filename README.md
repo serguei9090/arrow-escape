@@ -260,44 +260,37 @@ flutter build windows --release
 
 ---
 
-## Monetization
+## Monetization & Environment Configuration
 
-Ad priority waterfall: **AdMob → Unity Ads**. All off by default.
+AdMob SDK with AdMob Mediation support (Unity Ads, AppLovin served server-side).
 
-### Toggles (`lib/core/constants.dart`)
+### Environment Variables (`.env`)
 
-| Constant | Default | Purpose |
-|---|---|---|
-| `enableAdMob` | `true` | Google AdMob |
-| `enableUnityAds` | `false` | Unity Ads |
+Secrets and Ad Unit IDs are loaded securely from `.env` using `flutter_dotenv`.
+Copy `.env.example` to `.env` for local development or production releases:
 
-### AdMob
-
-```dart
-static const String admobAppIdAndroid       = 'ca-app-pub-XXXXXXXXXX~XXXXXXXXXX';
-static const String admobBannerUnitId       = 'ca-app-pub-XXXXXXXXXX/XXXXXXXXXX';
-static const String admobInterstitialUnitId = 'ca-app-pub-XXXXXXXXXX/XXXXXXXXXX';
-static const String admobRewardedUnitId     = 'ca-app-pub-XXXXXXXXXX/XXXXXXXXXX';
+```env
+ADMOB_APP_ID_ANDROID=ca-app-pub-3940256099942544~3347511713
+ADMOB_BANNER_ID=ca-app-pub-3940256099942544/6300978111
+ADMOB_INTERSTITIAL_ID=ca-app-pub-3940256099942544/1033173712
+ADMOB_REWARDED_ID=ca-app-pub-3940256099942544/5224354917
 ```
 
-Add to `android/app/src/main/AndroidManifest.xml`:
+> **Note**: `.env` is listed in `.gitignore` so your production keys will never leak to public repositories.
+
+### Android Manifest Setup (`android/app/src/main/AndroidManifest.xml`)
+
+Add your AdMob Application ID to AndroidManifest:
 ```xml
 <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
            android:value="ca-app-pub-XXXXXXXXXX~XXXXXXXXXX"/>
-```
-
-### Unity Ads
-
-```dart
-static const String unityGameId           = 'YOUR_UNITY_GAME_ID';
-static const String unityRewardedAdId     = 'Rewarded_Android';
-static const bool   unityTestMode         = false;
 ```
 
 ### Interstitial Frequency
 
 ```dart
 static const int interstitialEveryNLevels = 4;
+```
 ```
 
 ---
