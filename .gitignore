@@ -124,6 +124,15 @@ brag-output/
 .hyperframes/
 *.mp4
 
-# Agents Folder
+# Agents & Scratch Folder
 .agents/
+/scratch/
+scratch/
 
+# Node & Web Build Dependencies
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+bun.lock
+package-lock.json
