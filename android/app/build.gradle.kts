@@ -26,7 +26,7 @@ val admobAppId = keystoreProperties.getProperty("admobAppId")
     ?: "ca-app-pub-3044335875753764~1764036598"
 
 android {
-    namespace = "com.arrowx.escape"
+    namespace = "com.aiopsforge.vectorescape"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -36,7 +36,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.arrowx.escape"
+        applicationId = "com.aiopsforge.vectorescape"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
