@@ -549,8 +549,36 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(bodyPath, bodyPaint);
 
+    // ── 6.5. Draw diagonal stripes overlay if arrow is part of a color-lock pair ──
+    final isPaired = arrowModel.colorGroup != null || arrowModel.mechanic == SnakeMechanic.colorLock;
+    if (isPaired && !isHinted) {
+      canvas.save();
+      // Clip to the body stroke path
+      final Path strokeClipPath = bodyPaint.getFillPath(bodyPath);
+      canvas.clipPath(strokeClipPath);
+
+      final stripePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.65)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw * 0.35
+        ..strokeCap = StrokeCap.square;
+
+      final bounds = strokeClipPath.getBounds();
+      final stripeSpacing = sw * 0.85;
+      final totalExtent = bounds.width + bounds.height + stripeSpacing * 2;
+
+      for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
+        canvas.drawLine(
+          Offset(bounds.left + d, bounds.top - sw),
+          Offset(bounds.left + d + bounds.height + sw * 2, bounds.bottom + sw),
+          stripePaint,
+        );
+      }
+      canvas.restore();
+    }
+
     // ── 7. Draw arrowhead at the head end (pts.first) ──────────────────────────────
-    _drawHead(canvas, pts, isHinted ? const Color(0xFFFFD700) : mainColor, isHinted ? sw * 1.35 : sw);
+    _drawHead(canvas, pts, isHinted ? const Color(0xFFFFD700) : mainColor, isHinted ? sw * 1.35 : sw, isPaired && !isHinted);
 
     // ── 8. Long-press preview overlay ────────────────────────────────────────────
     if (_isPreviewMode) {
@@ -566,7 +594,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
 
   // ── Arrowhead ─────────────────────────────────────────────────────────────
 
-  void _drawHead(Canvas canvas, List<Offset> pts, Color mainColor, double sw) {
+  void _drawHead(Canvas canvas, List<Offset> pts, Color mainColor, double sw, [bool isPaired = false]) {
     final Path caretPath;
     final bool isAnimatingNow = _isExiting || _isBlockedAnimating;
 
@@ -585,6 +613,29 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
         ..color = mainColor
         ..style = PaintingStyle.fill,
     );
+
+    if (isPaired) {
+      canvas.save();
+      canvas.clipPath(caretPath);
+      final stripePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.65)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw * 0.35
+        ..strokeCap = StrokeCap.square;
+
+      final bounds = caretPath.getBounds();
+      final stripeSpacing = sw * 0.85;
+      final totalExtent = bounds.width + bounds.height + stripeSpacing * 2;
+
+      for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
+        canvas.drawLine(
+          Offset(bounds.left + d, bounds.top - sw),
+          Offset(bounds.left + d + bounds.height + sw * 2, bounds.bottom + sw),
+          stripePaint,
+        );
+      }
+      canvas.restore();
+    }
 
     // ── Color Lock Partner Ring Indicator at Tail Node ─────────────────────
     if (arrowModel.mechanic == SnakeMechanic.colorLock && pts.isNotEmpty) {
