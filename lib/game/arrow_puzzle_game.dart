@@ -103,4 +103,8 @@ class ArrowPuzzleGame extends FlameGame {
     gameState.resetLevel();
     gridComponent?.rebuild();
   }
+
+  void triggerArrowTap(String arrowId) {
+    gridComponent?.triggerArrowTap(arrowId);
+  }
 }

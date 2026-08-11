@@ -779,6 +779,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       return _LevelLoadingScreen(levelNumber: levelNum);
     }
 
+    final progress = context.watch<ProgressRepository>();
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
 
     // Calculate level progress

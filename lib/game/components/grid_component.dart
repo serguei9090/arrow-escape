@@ -243,8 +243,6 @@ class GridComponent extends PositionComponent {
 
 
 
-  // ── Update ────────────────────────────────────────────────────────────────
-
   @override
   void update(double dt) {
     super.update(dt);
@@ -257,5 +255,9 @@ class GridComponent extends PositionComponent {
         _arrowComponents.remove(id);
       }
     }
+  }
+
+  void triggerArrowTap(String arrowId) {
+    _arrowComponents[arrowId]?.triggerMove();
   }
 }

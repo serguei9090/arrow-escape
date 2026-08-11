@@ -137,7 +137,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
     _previewPath = null;
   }
 
-  void _triggerMove() {
+  void triggerMove() {
     if (_isAnimating) return;
     _isAnimating = true;
 
