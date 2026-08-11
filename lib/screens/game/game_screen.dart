@@ -983,9 +983,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       );
     } else if (levelNum == 2) {
       _showTutorialDialog(
-        title: 'Color Paired Arrows',
+        title: 'Striped Color-Paired Arrows',
         description:
-            'Arrows with matching colors are paired together! Tap on either arrow in the pair, and both will slide out together simultaneously. Make sure both exit paths are clear!',
+            'Arrows with matching diagonal stripes are paired together! (e.g. Red and Blue pairs). Tap on either arrow in the pair, and both will slide out together simultaneously. Make sure both exit paths are clear!',
         icon: LucideIcons.coins,
         iconColor: const Color(0xFFFF2D55),
         animationWidget: _buildColorLockAnimation(),
@@ -1339,12 +1339,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildColorLockAnimation() {
-    // Color-pair tutorial: show two paired arrows with diagonal stripes
-    // so players visually recognize matching striped paired arrows.
-    final Color color1 = AppColors.getGroupColor(0); // group 0 pair color
-    final Color color2 = AppColors.getGroupColor(0); // same pair color for true pair match
+    // Red (Color 0) and Blue (Color 1) paired arrows rendered directly as clean arrow vectors
+    final Color redColor = AppColors.getGroupColor(0);  // Red pair color
+    final Color blueColor = AppColors.getGroupColor(1); // Blue pair color
+
     return Container(
-      height: 110,
+      height: 120,
       width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -1359,20 +1359,19 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── Arrow 1 (color1, exits UP with Stripes) ─────────────────
+                // ── Red Striped Arrow Vector (exits UP) ───────────────────────
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CustomPaint(
-                      foregroundPainter: _DiagonalStripePainter(color: Colors.white.withValues(alpha: 0.65)),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: color1.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: color1, width: 2),
+                    SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: CustomPaint(
+                        painter: _ArrowVectorPainter(
+                          color: redColor,
+                          direction: AxisDirection.up,
+                          isStriped: true,
                         ),
-                        child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
                       ),
                     )
                         .animate(onPlay: (c) => c.repeat())
@@ -1387,17 +1386,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             delay: 900.ms,
                             duration: 550.ms)
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color1.withValues(alpha: 0.15),
+                        color: redColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('STRIPED PAIR',
+                      child: Text('RED PAIR',
                           style: TextStyle(
                               fontSize: 9,
-                              color: color1,
+                              color: redColor,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5)),
                     ),
@@ -1406,31 +1405,30 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
                 const SizedBox(width: 28),
 
-                // ── A small link indicator ───────────────────────────────────
+                // ── Link Icon ───────────────────────────────────────────────
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.link_rounded,
-                        color: Color(0xFF888888), size: 18),
+                        color: Color(0xFF888888), size: 20),
                   ],
                 ),
 
                 const SizedBox(width: 28),
 
-                // ── Arrow 2 (color2, exits RIGHT with Stripes) ──────────────
+                // ── Blue Striped Arrow Vector (exits RIGHT) ────────────────────
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CustomPaint(
-                      foregroundPainter: _DiagonalStripePainter(color: Colors.white.withValues(alpha: 0.65)),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: color2.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: color2, width: 2),
+                    SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: CustomPaint(
+                        painter: _ArrowVectorPainter(
+                          color: blueColor,
+                          direction: AxisDirection.right,
+                          isStriped: true,
                         ),
-                        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
                       ),
                     )
                         .animate(onPlay: (c) => c.repeat())
@@ -1442,17 +1440,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         .slideX(
                             begin: 0, end: 1.4, delay: 900.ms, duration: 550.ms)
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color2.withValues(alpha: 0.15),
+                        color: blueColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('STRIPED PAIR',
+                      child: Text('BLUE PAIR',
                           style: TextStyle(
                               fontSize: 9,
-                              color: color2,
+                              color: blueColor,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5)),
                     ),
@@ -3092,38 +3090,124 @@ class _ActionButtonWithBadge extends StatelessWidget {
   }
 }
 
-class _DiagonalStripePainter extends CustomPainter {
+class _ArrowVectorPainter extends CustomPainter {
   final Color color;
+  final AxisDirection direction;
+  final bool isStriped;
 
-  _DiagonalStripePainter({required this.color});
+  _ArrowVectorPainter({
+    required this.color,
+    required this.direction,
+    this.isStriped = true,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final double sw = size.width * 0.22;
+    final center = Offset(size.width / 2, size.height / 2);
+
+    final Path bodyPath = Path();
+    final Path caretPath = Path();
+    Offset tailPt = Offset.zero;
+
+    if (direction == AxisDirection.up) {
+      bodyPath.moveTo(center.dx, center.dy + size.height * 0.35);
+      bodyPath.lineTo(center.dx, center.dy - size.height * 0.15);
+      tailPt = Offset(center.dx, center.dy + size.height * 0.35);
+
+      final tip = Offset(center.dx, center.dy - size.height * 0.40);
+      final base = Offset(center.dx, center.dy - size.height * 0.15);
+      caretPath.moveTo(base.dx - size.width * 0.28, base.dy);
+      caretPath.lineTo(tip.dx, tip.dy);
+      caretPath.lineTo(base.dx + size.width * 0.28, base.dy);
+      caretPath.close();
+    } else {
+      // AxisDirection.right
+      bodyPath.moveTo(center.dx - size.width * 0.35, center.dy);
+      bodyPath.lineTo(center.dx + size.width * 0.15, center.dy);
+      tailPt = Offset(center.dx - size.width * 0.35, center.dy);
+
+      final tip = Offset(center.dx + size.width * 0.40, center.dy);
+      final base = Offset(center.dx + size.width * 0.15, center.dy);
+      caretPath.moveTo(base.dx, base.dy - size.height * 0.28);
+      caretPath.lineTo(tip.dx, tip.dy);
+      caretPath.lineTo(base.dx, base.dy + size.height * 0.28);
+      caretPath.close();
+    }
+
+    final bodyPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.square;
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(bodyPath, bodyPaint);
 
-    final RRect rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      const Radius.circular(10),
-    );
-    canvas.clipRRect(rrect);
+    if (isStriped) {
+      canvas.save();
+      canvas.clipPath(bodyPaint.getFillPath(bodyPath, strokeWidth: sw));
+      final stripePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.70)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw * 0.35
+        ..strokeCap = StrokeCap.square;
 
-    final double stripeSpacing = 8.0;
-    final double totalExtent = size.width + size.height + stripeSpacing * 2;
+      final bounds = bodyPath.getBounds().inflate(sw);
+      final stripeSpacing = sw * 0.85;
+      final totalExtent = bounds.width + bounds.height + stripeSpacing * 2;
 
-    for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
-      canvas.drawLine(
-        Offset(d, -5),
-        Offset(d + size.height + 10, size.height + 5),
-        paint,
-      );
+      for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
+        canvas.drawLine(
+          Offset(bounds.left + d, bounds.top - sw),
+          Offset(bounds.left + d + bounds.height + sw * 2, bounds.bottom + sw),
+          stripePaint,
+        );
+      }
+      canvas.restore();
     }
+
+    // Draw Caret Head
+    canvas.drawPath(caretPath, Paint()..color = color..style = PaintingStyle.fill);
+
+    if (isStriped) {
+      canvas.save();
+      canvas.clipPath(caretPath);
+      final stripePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.70)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw * 0.35
+        ..strokeCap = StrokeCap.square;
+
+      final bounds = caretPath.getBounds();
+      final stripeSpacing = sw * 0.85;
+      final totalExtent = bounds.width + bounds.height + stripeSpacing * 2;
+
+      for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
+        canvas.drawLine(
+          Offset(bounds.left + d, bounds.top - sw),
+          Offset(bounds.left + d + bounds.height + sw * 2, bounds.bottom + sw),
+          stripePaint,
+        );
+      }
+      canvas.restore();
+    }
+
+    // Tail Ring Indicator for paired lock
+    canvas.drawCircle(
+      tailPt,
+      sw * 0.75,
+      Paint()..color = Colors.white..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      tailPt,
+      sw * 0.50,
+      Paint()..color = color..style = PaintingStyle.fill,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _DiagonalStripePainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(covariant _ArrowVectorPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.direction != direction ||
+      oldDelegate.isStriped != isStriped;
 }

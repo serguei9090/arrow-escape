@@ -553,7 +553,8 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
     final isPaired = arrowModel.colorGroup != null || arrowModel.mechanic == SnakeMechanic.colorLock;
     if (isPaired && !isHinted) {
       canvas.save();
-      canvas.clipPath(bodyPath);
+      // Clip to body line stroke area
+      canvas.clipPath(bodyPaint.getFillPath(bodyPath, strokeWidth: sw));
 
       final stripePaint = Paint()
         ..color = Colors.white.withValues(alpha: 0.70)
@@ -561,7 +562,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
         ..strokeWidth = sw * 0.35
         ..strokeCap = StrokeCap.square;
 
-      final bounds = bodyPath.getBounds();
+      final bounds = bodyPath.getBounds().inflate(sw);
       final stripeSpacing = sw * 0.85;
       final totalExtent = bounds.width + bounds.height + stripeSpacing * 2;
 
