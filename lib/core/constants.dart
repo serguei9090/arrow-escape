@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   // App identity
-  static const String appName = 'Arrow Escape';
+  static const String appName = 'Vector Escape';
   static const String packageId = 'com.arrowx.escape';
 
   // Grid sizes: 10×10 minimum at level 1, up to 35×35 target (hard cap 40).
