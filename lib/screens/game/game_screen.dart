@@ -3145,7 +3145,7 @@ class _ArrowVectorPainter extends CustomPainter {
 
     if (isStriped) {
       canvas.save();
-      canvas.clipPath(bodyPaint.getFillPath(bodyPath, strokeWidth: sw));
+      canvas.clipPath(bodyPath);
       final stripePaint = Paint()
         ..color = Colors.white.withValues(alpha: 0.70)
         ..style = PaintingStyle.stroke
