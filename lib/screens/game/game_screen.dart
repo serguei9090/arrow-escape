@@ -1339,11 +1339,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildColorLockAnimation() {
-    // Color-pair tutorial: show two arrows in DIFFERENT colors so players
-    // understand that "matching colors = paired". Arrow 1 exits upward
-    // (coral/red), Arrow 2 exits rightward (cyan/teal) — both at the same time.
+    // Color-pair tutorial: show two paired arrows with diagonal stripes
+    // so players visually recognize matching striped paired arrows.
     final Color color1 = AppColors.getGroupColor(0); // group 0 pair color
-    final Color color2 = AppColors.getGroupColor(1); // group 1 pair color
+    final Color color2 = AppColors.getGroupColor(0); // same pair color for true pair match
     return Container(
       height: 110,
       width: double.infinity,
@@ -1360,20 +1359,21 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── Arrow 1 (color1, exits UP) ──────────────────────────────
+                // ── Arrow 1 (color1, exits UP with Stripes) ─────────────────
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: color1.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: color1, width: 2),
+                    CustomPaint(
+                      foregroundPainter: _DiagonalStripePainter(color: Colors.white.withValues(alpha: 0.65)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: color1.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: color1, width: 2),
+                        ),
+                        child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
                       ),
-                      child: Icon(Icons.arrow_upward_rounded,
-                          color: color1, size: 20),
                     )
                         .animate(onPlay: (c) => c.repeat())
                         .scale(
@@ -1389,23 +1389,22 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color1.withValues(alpha: 0.1),
+                        color: color1.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('PAIR',
+                      child: Text('STRIPED PAIR',
                           style: TextStyle(
                               fontSize: 9,
                               color: color1,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 1)),
+                              letterSpacing: 0.5)),
                     ),
                   ],
                 ),
 
-                const SizedBox(width: 36),
+                const SizedBox(width: 28),
 
                 // ── A small link indicator ───────────────────────────────────
                 Column(
@@ -1416,22 +1415,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   ],
                 ),
 
-                const SizedBox(width: 36),
+                const SizedBox(width: 28),
 
-                // ── Arrow 2 (color2, exits RIGHT) ────────────────────────────
+                // ── Arrow 2 (color2, exits RIGHT with Stripes) ──────────────
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: color2.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: color2, width: 2),
+                    CustomPaint(
+                      foregroundPainter: _DiagonalStripePainter(color: Colors.white.withValues(alpha: 0.65)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: color2.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: color2, width: 2),
+                        ),
+                        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
                       ),
-                      child: Icon(Icons.arrow_forward_rounded,
-                          color: color2, size: 20),
                     )
                         .animate(onPlay: (c) => c.repeat())
                         .scale(
@@ -1444,18 +1444,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color2.withValues(alpha: 0.1),
+                        color: color2.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('PAIR',
+                      child: Text('STRIPED PAIR',
                           style: TextStyle(
                               fontSize: 9,
                               color: color2,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 1)),
+                              letterSpacing: 0.5)),
                     ),
                   ],
                 ),
@@ -3091,4 +3090,40 @@ class _ActionButtonWithBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DiagonalStripePainter extends CustomPainter {
+  final Color color;
+
+  _DiagonalStripePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.square;
+
+    final RRect rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      const Radius.circular(10),
+    );
+    canvas.clipRRect(rrect);
+
+    final double stripeSpacing = 8.0;
+    final double totalExtent = size.width + size.height + stripeSpacing * 2;
+
+    for (double d = -totalExtent; d <= totalExtent; d += stripeSpacing) {
+      canvas.drawLine(
+        Offset(d, -5),
+        Offset(d + size.height + 10, size.height + 5),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DiagonalStripePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
