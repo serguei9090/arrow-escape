@@ -778,7 +778,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 alignment: Alignment.center,
                 width: double.infinity,
                 height: 50,
-                child: const UnifiedBannerAd(
+                child: UnifiedBannerAd(
                   admobUnitId: AppConstants.admobBannerUnitId,
                   unityPlacementId: AppConstants.unityBannerAdId,
                 ),
