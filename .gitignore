@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 *.log
+*.txt
 *.pyc
 *.swp
 .DS_Store
@@ -25,6 +26,7 @@ migrate.yaml
 .pub/
 build/
 **/build/
+release_builds/
 
 
 # Web related
@@ -112,5 +114,16 @@ test/verify_bin_solvability_test.dart
 # Sensitive Local Secrets
 .env
 lib/core/ad_secrets.dart
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
 
+# Brag & HyperFrames Output
+brag-output/
+.hyperframes/
+*.mp4
+
+# Agents Folder
+.agents/
 

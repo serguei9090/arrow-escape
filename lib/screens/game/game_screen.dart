@@ -44,9 +44,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int? _loadedLevelNum;
   bool _isLoadingLevel = false; // true while level is being generated async
 
-  // InteractiveViewer controller for hint zoom/pan focus
-  final TransformationController _transformationController = TransformationController();
-
   // Timer fields
   Timer? _levelTimer;
   int _timeRemaining = 0;
@@ -55,12 +52,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _isGamePaused = false;
   bool _isAppBackgrounded = false;
 
+  late final TransformationController _transformationController;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 4));
+    _transformationController = TransformationController();
   }
 
   @override
@@ -122,6 +122,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _showingGameOver = false;
     _showingDeadlock = false;
     _inspectingDeadlock = false;
+    _transformationController.value = Matrix4.identity();
     _gameState?.removeListener(_onGameStateChanged);
     _gameState = GameState(
       level: _level,
@@ -315,7 +316,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final adManager = context.read<AdManager>();
     Navigator.pop(context);
     bool rewarded = false;
-    adManager.showRewarded(
+    adManager.showRewardedWithLoader(
+      context,
       onRewarded: () {
         rewarded = true;
         context.read<ProgressRepository>().addCoins(AppConstants.baseScore +
@@ -448,8 +450,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           // Watch rewarded ad to restore 1 life or add extra time
           final adManager = context.read<AdManager>();
           Navigator.pop(context);
-          adManager.showRewarded(
+          bool rewarded = false;
+          adManager.showRewardedWithLoader(
+            context,
             onRewarded: () {
+              rewarded = true;
+              if (!mounted) return;
               setState(() {
                 _showingGameOver = false;
                 if (_isTimeoutState) {
@@ -463,7 +469,30 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 }
               });
             },
-            onDismissed: () {},
+            onDismissed: () {
+              if (!rewarded && mounted) {
+                _showingGameOver = false;
+                _showGameOverDialog(); // Re-open game over dialog so player can try again or restart
+                ScaffoldMessenger.of(context).clearSnackBars();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Ad not completed. Try watching again or restart.',
+                      style: GoogleFonts.nunito(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFFC0392B),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
           );
         },
         onRestart: () {
@@ -480,11 +509,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _transformationController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _levelTimer?.cancel();
     _gameState?.removeListener(_onGameStateChanged);
     _confettiController.dispose();
-    _transformationController.dispose();
     super.dispose();
   }
 
@@ -546,6 +575,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   void _resetTimerForLevel() {
     _levelTimer?.cancel();
     _isTimeoutState = false;
+
+    final progress = context.read<ProgressRepository>();
+    if (progress.isDemoMode) {
+      _totalTime = 0;
+      _timeRemaining = 0;
+      return;
+    }
 
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
     final hasTimer = (levelType == LevelType.god && _level.levelNumber > 100) ||
@@ -611,7 +647,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       return _LevelLoadingScreen(levelNumber: levelNum);
     }
 
-    final progress = context.watch<ProgressRepository>();
     final levelType = AppConstants.levelTypeFor(_level.levelNumber);
 
     // Calculate level progress
@@ -659,56 +694,91 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final boardSize =
-                        min(constraints.maxWidth, constraints.maxHeight - 16);
-                    return ShaderMask(
-                      shaderCallback: (Rect bounds) {
-                        return const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black,
-                            Colors.black,
-                            Colors.transparent,
-                          ],
-                          stops: [
-                            0.0,
-                            0.08,
-                            0.92,
-                            1.0,
-                          ],
-                        ).createShader(bounds);
-                      },
-                      blendMode: BlendMode.dstIn,
-                      child: InteractiveViewer(
-                        transformationController: _transformationController,
-                        minScale: 0.8,
-                        maxScale: 4.0,
-                        boundaryMargin: const EdgeInsets.all(60),
-                        clipBehavior: Clip.hardEdge,
-                        child: Center(
-                          child: SizedBox(
-                            width: boardSize,
-                            height: boardSize,
-                            child: GameWidget(game: _game),
+                    // Measure the real screen area BEFORE entering InteractiveViewer.
+                    // InteractiveViewer gives unbounded constraints to its children,
+                    // so LayoutBuilder must be OUTSIDE to get finite values.
+                    // Use the full available rect — Flame's _calcLayout already
+                    // handles non-square grids by fitting activeCols × activeRows.
+                    final boardW = constraints.maxWidth;
+                    final boardH = constraints.maxHeight;
+                    final fadeH = boardH * 0.10;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Canvas — fills the Expanded bounds, clipped hard
+                        Positioned.fill(
+                          child: ClipRect(
+                            child: InteractiveViewer(
+                              transformationController:
+                                  _transformationController,
+                              minScale: 0.8,
+                              maxScale: 4.0,
+                              boundaryMargin: const EdgeInsets.all(180),
+                              clipBehavior: Clip.none,
+                              child: Center(
+                                child: SizedBox(
+                                  width: boardW,
+                                  height: boardH,
+                                  child: GameWidget(game: _game),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        // Top fade — fixed overlay, non-interactive
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Container(
+                              height: fadeH,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    AppColors.background,
+                                    AppColors.background.withValues(alpha: 0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Bottom fade — fixed overlay, non-interactive
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Container(
+                              height: fadeH,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [
+                                    AppColors.background,
+                                    AppColors.background.withValues(alpha: 0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
               ),
-
-              // ── Bottom Action Bar (Hint & Solve) ──────────────────────────
-              _buildBottomActionBar(progress),
 
               // ── Banner Ad (centered and sized to avoid layout warnings) ──
               Container(
                 alignment: Alignment.center,
                 width: double.infinity,
                 height: 50,
-                child: UnifiedBannerAd(
+                child: const UnifiedBannerAd(
                   admobUnitId: AppConstants.admobBannerUnitId,
                   unityPlacementId: AppConstants.unityBannerAdId,
                 ),
@@ -737,265 +807,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               ),
             )
           : null,
-    );
-  }
-
-  Widget _buildBottomActionBar(ProgressRepository progress) {
-    if (_showingComplete || _showingGameOver || _isLoadingLevel) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // ── Hint Button ────────────────────────────────────────────────────
-          _ActionButton(
-            label: 'Hint',
-            count: progress.hints,
-            icon: LucideIcons.lightbulb,
-            accentColor: AppColors.accentGold,
-            onTap: () => _handleHintAction(progress),
-          ),
-          const SizedBox(width: 16),
-
-          // ── Solve Next Step Button ──────────────────────────────────────────
-          _ActionButton(
-            label: 'Solve Step',
-            count: progress.solves,
-            icon: LucideIcons.wand2,
-            accentColor: AppColors.primary,
-            onTap: () => _handleSolveAction(progress),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleHintAction(ProgressRepository progress) async {
-    if (_gameState == null) return;
-    AudioManager.instance.playClick();
-
-    if (progress.hints > 0) {
-      final hintId = _gameState!.findNextSolvableArrowId();
-      if (hintId == null) {
-        _showToast('No solvable arrow found! Board might be deadlocked.');
-        return;
-      }
-
-      await progress.consumeHint();
-      _gameState!.setHintArrow(hintId);
-      _focusOnArrow(hintId);
-      _showToast('Hint highlighted! Tap the glowing arrow.');
-    } else {
-      _showItemStoreDialog(
-        title: 'Out of Hints!',
-        itemType: 'Hint',
-        count: 2,
-        coinCost: ProgressRepository.hintCoinCost,
-        icon: LucideIcons.lightbulb,
-        iconColor: AppColors.accentGold,
-        onWatchAd: () async {
-          final adManager = context.read<AdManager>();
-          await adManager.showRewarded(
-            onRewarded: () {
-              progress.addHints(2);
-              _showToast('Received +2 Hints!');
-            },
-          );
-        },
-        onBuyCoins: () async {
-          final success = await progress.buyHintsWithCoins();
-          if (success) {
-            _showToast('Purchased 2 Hints for ${ProgressRepository.hintCoinCost} coins!');
-          } else {
-            _showToast('Not enough coins! Need ${ProgressRepository.hintCoinCost} coins.');
-          }
-        },
-      );
-    }
-  }
-
-  Future<void> _handleSolveAction(ProgressRepository progress) async {
-    if (_gameState == null) return;
-    AudioManager.instance.playClick();
-
-    if (progress.solves > 0) {
-      final hintId = _gameState!.findNextSolvableArrowId();
-      if (hintId == null) {
-        _showToast('No solvable arrow found! Board might be deadlocked.');
-        return;
-      }
-
-      await progress.consumeSolve();
-      _gameState!.setHintArrow(null);
-      _gameState!.tapArrow(hintId);
-      _showToast('Solved 1 step!');
-    } else {
-      _showItemStoreDialog(
-        title: 'Out of Solves!',
-        itemType: 'Solve',
-        count: 2,
-        coinCost: ProgressRepository.solveCoinCost,
-        icon: LucideIcons.wand2,
-        iconColor: AppColors.primary,
-        onWatchAd: () async {
-          final adManager = context.read<AdManager>();
-          await adManager.showRewarded(
-            onRewarded: () {
-              progress.addSolves(2);
-              _showToast('Received +2 Solves!');
-            },
-          );
-        },
-        onBuyCoins: () async {
-          final success = await progress.buySolvesWithCoins();
-          if (success) {
-            _showToast('Purchased 2 Solves for ${ProgressRepository.solveCoinCost} coins!');
-          } else {
-            _showToast('Not enough coins! Need ${ProgressRepository.solveCoinCost} coins.');
-          }
-        },
-      );
-    }
-  }
-
-  void _focusOnArrow(String arrowId) {
-    if (_gameState == null) return;
-    final arrow = _gameState!.arrows.firstWhere(
-      (a) => a.id == arrowId,
-      orElse: () => _gameState!.arrows.first,
-    );
-
-    final head = arrow.path.first;
-    final gridSize = _gameState!.level.gridSize;
-    final targetX = (head[1] + 0.5) / gridSize;
-    final targetY = (head[0] + 0.5) / gridSize;
-
-    // Zoom gently onto the target hint arrow
-    // ignore: deprecated_member_use
-    final Matrix4 matrix = Matrix4.identity()
-      // ignore: deprecated_member_use
-      ..translate(-targetX * 60, -targetY * 60)
-      // ignore: deprecated_member_use
-      ..scale(1.25);
-    _transformationController.value = matrix;
-  }
-
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: GoogleFonts.nunito(
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  Future<void> _showItemStoreDialog({
-    required String title,
-    required String itemType,
-    required int count,
-    required int coinCost,
-    required IconData icon,
-    required Color iconColor,
-    required VoidCallback onWatchAd,
-    required VoidCallback onBuyCoins,
-  }) async {
-    final progress = context.read<ProgressRepository>();
-
-    await showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.surfaceLight, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: iconColor.withValues(alpha: 0.2),
-                blurRadius: 24,
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: iconColor, size: 48),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: GoogleFonts.nunito(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Get +$count $itemType items to help solve this level',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Option 1: Watch Ad for +2
-              _DialogButton(
-                label: 'Watch Ad (+$count $itemType)',
-                icon: LucideIcons.tv,
-                gradient: AppColors.successGradient,
-                onTap: () {
-                  Navigator.pop(context);
-                  onWatchAd();
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // Option 2: Buy with Coins
-              _DialogButton(
-                label: 'Buy for $coinCost Coins (Have ${progress.coins})',
-                icon: LucideIcons.coins,
-                gradient: AppColors.primaryGradient,
-                onTap: () {
-                  Navigator.pop(context);
-                  onBuyCoins();
-                },
-              ),
-              const SizedBox(height: 12),
-
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.nunito(
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1065,7 +876,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             ),
             backgroundColor: AppColors.primary,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -1190,7 +1002,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             decoration: BoxDecoration(
               color: AppColors.background,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 2),
+              border: Border.all(
+                  color: iconColor.withValues(alpha: 0.25), width: 2),
               boxShadow: [
                 BoxShadow(
                   color: iconColor.withValues(alpha: 0.15),
@@ -1204,11 +1017,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               children: [
                 // Tutorial Step Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: iconColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: iconColor.withValues(alpha: 0.3), width: 1),
+                    border: Border.all(
+                        color: iconColor.withValues(alpha: 0.3), width: 1),
                   ),
                   child: Text(
                     'TUTORIAL STEP $stepText',
@@ -1221,7 +1036,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Pulsing Icon
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1230,15 +1045,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: iconColor, size: 28),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(
-                        begin: const Offset(0.92, 0.92),
-                        end: const Offset(1.08, 1.08),
-                        duration: 1000.ms,
-                        curve: Curves.easeInOut),
+                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
+                    begin: const Offset(0.92, 0.92),
+                    end: const Offset(1.08, 1.08),
+                    duration: 1000.ms,
+                    curve: Curves.easeInOut),
                 const SizedBox(height: 16),
-                
+
                 Text(
                   title,
                   textAlign: TextAlign.center,
@@ -1353,7 +1166,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   .animate(onPlay: (c) => c.repeat())
                   .hide()
                   .fadeIn(delay: 400.ms, duration: 200.ms)
-                  .scale(begin: const Offset(1.2, 1.2), end: const Offset(0.9, 0.9), delay: 400.ms, duration: 400.ms, curve: Curves.easeOutBack)
+                  .scale(
+                      begin: const Offset(1.2, 1.2),
+                      end: const Offset(0.9, 0.9),
+                      delay: 400.ms,
+                      duration: 400.ms,
+                      curve: Curves.easeOutBack)
                   .fadeOut(delay: 800.ms, duration: 200.ms),
             ),
           ],
@@ -1366,8 +1184,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     // Color-pair tutorial: show two arrows in DIFFERENT colors so players
     // understand that "matching colors = paired". Arrow 1 exits upward
     // (coral/red), Arrow 2 exits rightward (cyan/teal) — both at the same time.
-    const Color color1 = Color(0xFFFF2D55); // coral-red pair
-    const Color color2 = Color(0xFF00BCD4); // cyan-teal pair
+    final Color color1 = AppColors.getGroupColor(0); // group 0 pair color
+    final Color color2 = AppColors.getGroupColor(1); // group 1 pair color
     return Container(
       height: 110,
       width: double.infinity,
@@ -1389,13 +1207,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: color1.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: color1, width: 2),
                       ),
-                      child: const Icon(Icons.arrow_upward_rounded, color: color1, size: 20),
+                      child: Icon(Icons.arrow_upward_rounded,
+                          color: color1, size: 20),
                     )
                         .animate(onPlay: (c) => c.repeat())
                         .scale(
@@ -1403,16 +1223,26 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             end: const Offset(1.05, 1.05),
                             duration: 700.ms,
                             curve: Curves.easeInOut)
-                        .slideY(begin: 0, end: -1.4, delay: 900.ms, duration: 550.ms)
+                        .slideY(
+                            begin: 0,
+                            end: -1.4,
+                            delay: 900.ms,
+                            duration: 550.ms)
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: color1.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text('PAIR', style: TextStyle(fontSize: 9, color: color1, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                      child: Text('PAIR',
+                          style: TextStyle(
+                              fontSize: 9,
+                              color: color1,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1)),
                     ),
                   ],
                 ),
@@ -1423,7 +1253,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.link_rounded, color: Color(0xFF888888), size: 18),
+                    const Icon(Icons.link_rounded,
+                        color: Color(0xFF888888), size: 18),
                   ],
                 ),
 
@@ -1434,13 +1265,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: color2.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: color2, width: 2),
                       ),
-                      child: const Icon(Icons.arrow_forward_rounded, color: color2, size: 20),
+                      child: Icon(Icons.arrow_forward_rounded,
+                          color: color2, size: 20),
                     )
                         .animate(onPlay: (c) => c.repeat())
                         .scale(
@@ -1448,16 +1281,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             end: const Offset(1.05, 1.05),
                             duration: 700.ms,
                             curve: Curves.easeInOut)
-                        .slideX(begin: 0, end: 1.4, delay: 900.ms, duration: 550.ms)
+                        .slideX(
+                            begin: 0, end: 1.4, delay: 900.ms, duration: 550.ms)
                         .fadeOut(delay: 1000.ms, duration: 200.ms),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: color2.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text('PAIR', style: TextStyle(fontSize: 9, color: color2, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                      child: Text('PAIR',
+                          style: TextStyle(
+                              fontSize: 9,
+                              color: color2,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1)),
                     ),
                   ],
                 ),
@@ -1474,7 +1314,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   .animate(onPlay: (c) => c.repeat())
                   .hide()
                   .fadeIn(delay: 300.ms, duration: 200.ms)
-                  .scale(begin: const Offset(1.2, 1.2), end: const Offset(0.9, 0.9), delay: 300.ms, duration: 400.ms, curve: Curves.easeOutBack)
+                  .scale(
+                      begin: const Offset(1.2, 1.2),
+                      end: const Offset(0.9, 0.9),
+                      delay: 300.ms,
+                      duration: 400.ms,
+                      curve: Curves.easeOutBack)
                   .fadeOut(delay: 750.ms, duration: 200.ms),
             ),
           ],
@@ -1685,87 +1530,29 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progressRepo = context.watch<ProgressRepository>();
-
     return Container(
       height: 115,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Left Side (Back Button & Coin Badge aligned left)
+          // Left Side (Back Button aligned left)
           Align(
             alignment: Alignment.centerLeft,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    AudioManager.instance.playClick();
-                    onBack();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppColors.textPrimary.withValues(alpha: 0.1),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Icon(LucideIcons.arrowLeft,
-                        color: AppColors.textPrimary, size: 20),
-                  ),
+            child: GestureDetector(
+              onTap: () {
+                AudioManager.instance.playClick();
+                onBack();
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 8),
-
-                // Coins counter badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceLight.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: AppColors.textPrimary.withValues(alpha: 0.1),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.coins,
-                        color: AppColors.coinGold,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${progressRepo.coins}',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                child: Icon(LucideIcons.arrowLeft,
+                    color: AppColors.textPrimary, size: 18),
+              ),
             ),
           ),
 
@@ -1853,22 +1640,11 @@ class _TopBar extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceLight.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: AppColors.textPrimary.withValues(alpha: 0.1),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(LucideIcons.settings,
-                    color: AppColors.textPrimary, size: 20),
+                    color: AppColors.textPrimary, size: 18),
               ),
             ),
           ),
@@ -1897,7 +1673,10 @@ class _LevelCompleteDialog extends StatelessWidget {
     required this.onDoubleCoins,
   });
 
-  bool get _showAds => AppConstants.enableAdMob || AppConstants.enableUnityAds || AppConstants.enableAppLovin;
+  bool get _showAds =>
+      AppConstants.enableAdMob ||
+      AppConstants.enableUnityAds ||
+      AppConstants.enableAppLovin;
 
   @override
   Widget build(BuildContext context) {
@@ -2091,7 +1870,10 @@ class _GameOverDialog extends StatelessWidget {
     required this.onMenu,
   });
 
-  bool get _showAds => AppConstants.enableAdMob || AppConstants.enableUnityAds || AppConstants.enableAppLovin;
+  bool get _showAds =>
+      AppConstants.enableAdMob ||
+      AppConstants.enableUnityAds ||
+      AppConstants.enableAppLovin;
 
   @override
   Widget build(BuildContext context) {
@@ -2677,7 +2459,8 @@ class _BouncingDotsState extends State<_BouncingDots>
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: (widget.color ?? AppColors.primary).withValues(alpha: 0.5 + 0.5 * t),
+                  color: (widget.color ?? AppColors.primary)
+                      .withValues(alpha: 0.5 + 0.5 * t),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -3056,88 +2839,6 @@ class _GodLoadingScreenState extends State<_GodLoadingScreen>
               ),
               const SizedBox(height: 36),
               _BouncingDots(color: _godPurple),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Action Button for Bottom Bar (Hint & Solve) ──────────────────────────────
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final int count;
-  final IconData icon;
-  final Color accentColor;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.label,
-    required this.count,
-    required this.icon,
-    required this.accentColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = AppColors.isDark;
-    final isDisabled = count <= 0;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A2634) : const Color(0xFFFFFFFF),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: accentColor.withValues(alpha: isDisabled ? 0.3 : 0.6),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: accentColor.withValues(alpha: isDisabled ? 0.05 : 0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: isDisabled ? AppColors.textMuted : accentColor,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: isDisabled ? AppColors.textMuted : AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (isDisabled ? AppColors.textMuted : accentColor).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'x$count',
-                  style: GoogleFonts.nunito(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    color: isDisabled ? AppColors.textMuted : accentColor,
-                  ),
-                ),
-              ),
             ],
           ),
         ),

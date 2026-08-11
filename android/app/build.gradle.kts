@@ -4,6 +4,8 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // Load keystore properties
@@ -21,7 +23,7 @@ if (localPropertiesFile.exists()) {
 
 val admobAppId = keystoreProperties.getProperty("admobAppId")
     ?: localProperties.getProperty("admobAppId")
-    ?: "ca-app-pub-3904079345284100~3347511713"
+    ?: "ca-app-pub-3044335875753764~1764036598"
 
 android {
     namespace = "com.arrowx.escape"
