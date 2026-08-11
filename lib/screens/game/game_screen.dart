@@ -906,44 +906,26 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-              // ── Hint & Auto-Solve Action Bar ────────────────────────────
+              // ── Hint & Auto-Solve Action Bar (Icon-only with notification badges) ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Hint Button
-                    ElevatedButton.icon(
-                      onPressed: _handleHint,
-                      icon: const Icon(LucideIcons.lightbulb, size: 18),
-                      label: Text('Hint (${progress.hints})'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.surface,
-                        foregroundColor: AppColors.accentGold,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: AppColors.accentGold.withValues(alpha: 0.5), width: 1.5),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      ),
+                    // Hint Icon Button with Badge
+                    _ActionButtonWithBadge(
+                      icon: LucideIcons.lightbulb,
+                      count: progress.hints,
+                      color: AppColors.accentGold,
+                      onTap: _handleHint,
                     ),
-
-                    // Auto-Solve Button
-                    ElevatedButton.icon(
-                      onPressed: _handleSolve,
-                      icon: const Icon(LucideIcons.wand2, size: 18),
-                      label: Text('Solve (${progress.solves})'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.surface,
-                        foregroundColor: AppColors.primary,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5), width: 1.5),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      ),
+                    const SizedBox(width: 36),
+                    // Auto-Solve Icon Button with Badge
+                    _ActionButtonWithBadge(
+                      icon: LucideIcons.wand2,
+                      count: progress.solves,
+                      color: AppColors.primary,
+                      onTap: _handleSolve,
                     ),
                   ],
                 ),
@@ -3018,6 +3000,94 @@ class _GodLoadingScreenState extends State<_GodLoadingScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ActionButtonWithBadge extends StatelessWidget {
+  final IconData icon;
+  final int count;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionButtonWithBadge({
+    required this.icon,
+    required this.count,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Circular Glassmorphic Action Button
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: color.withValues(alpha: 0.4),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.15),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Center(
+              child: Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+            ),
+          ),
+
+          // WhatsApp-style Red Notification Badge
+          Positioned(
+            top: -4,
+            right: -4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+              decoration: BoxDecoration(
+                color: count > 0 ? const Color(0xFFEF4444) : const Color(0xFF94A3B8), // Red / Grey
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.background,
+                  width: 2,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '$count',
+                  style: GoogleFonts.nunito(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
