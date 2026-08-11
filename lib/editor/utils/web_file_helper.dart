@@ -77,6 +77,7 @@ class WebFileHelper {
   }
 
   /// Convert PNG image bytes into a grid mask Set<String> ('row,col') for a given [gridSize].
+  /// Features an auto-detecting background stripper (strips white/light or transparent backgrounds).
   static Future<Set<String>> parsePngToGridMask(Uint8List pngBytes, int gridSize) async {
     final completer = Completer<Set<String>>();
     final base64Str = base64Encode(pngBytes);
@@ -86,45 +87,89 @@ class WebFileHelper {
     img.src = dataUrl;
     await img.onLoad.first;
 
-    final canvas = html.CanvasElement(width: img.width, height: img.height);
+    final width = img.width ?? 100;
+    final height = img.height ?? 100;
+
+    final canvas = html.CanvasElement(width: width, height: height);
     final ctx = canvas.context2D;
     ctx.drawImage(img, 0, 0);
 
-    final imgData = ctx.getImageData(0, 0, img.width!, img.height!);
+    final imgData = ctx.getImageData(0, 0, width, height);
     final pixels = imgData.data;
 
+    // Detect background type from corner pixels
+    final cornerIndices = [
+      0, // top-left
+      (width - 1) * 4, // top-right
+      ((height - 1) * width) * 4, // bottom-left
+      ((height - 1) * width + (width - 1)) * 4, // bottom-right
+    ];
+
+    double cornerLuminanceSum = 0;
+    int cornerCount = 0;
+
+    for (final idx in cornerIndices) {
+      if (idx + 3 < pixels.length) {
+        final a = pixels[idx + 3];
+        if (a > 20) {
+          final r = pixels[idx];
+          final g = pixels[idx + 1];
+          final b = pixels[idx + 2];
+          final lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+          cornerLuminanceSum += lum;
+          cornerCount++;
+        }
+      }
+    }
+
+    final isLightBackground = cornerCount == 0 || (cornerLuminanceSum / cornerCount) > 0.5;
+
     final mask = <String>{};
-    final cellW = img.width! / gridSize;
-    final cellH = img.height! / gridSize;
+    final cellW = width / gridSize;
+    final cellH = height / gridSize;
 
     for (int r = 0; r < gridSize; r++) {
       for (int c = 0; c < gridSize; c++) {
         final startX = (c * cellW).floor();
         final startY = (r * cellH).floor();
-        final endX = ((c + 1) * cellW).floor().clamp(0, img.width!);
-        final endY = ((r + 1) * cellH).floor().clamp(0, img.height!);
+        final endX = ((c + 1) * cellW).floor().clamp(0, width);
+        final endY = ((r + 1) * cellH).floor().clamp(0, height);
 
-        int solidPixelCount = 0;
+        int shapePixelCount = 0;
         int totalPixelCount = 0;
 
         for (int y = startY; y < endY; y++) {
           for (int x = startX; x < endX; x++) {
-            final idx = (y * img.width! + x) * 4;
+            final idx = (y * width + x) * 4;
             final alpha = pixels[idx + 3];
             final rVal = pixels[idx];
             final gVal = pixels[idx + 1];
             final bVal = pixels[idx + 2];
 
             totalPixelCount++;
-            // Active if non-transparent and not pure white (e.g. dark or colored shape)
-            final isDarkOrColor = (rVal < 240 || gVal < 240 || bVal < 240);
-            if (alpha > 50 && isDarkOrColor) {
-              solidPixelCount++;
+
+            if (alpha < 20) {
+              // Transparent pixel -> background
+              continue;
+            }
+
+            final lum = (0.299 * rVal + 0.587 * gVal + 0.114 * bVal) / 255.0;
+
+            if (isLightBackground) {
+              // Light background: shape pixels are darker/colored pixels
+              if (lum < 0.85 || (rVal < 230 || gVal < 230 || bVal < 230)) {
+                shapePixelCount++;
+              }
+            } else {
+              // Dark background: shape pixels are brighter/colored pixels
+              if (lum > 0.2 || (rVal > 30 || gVal > 30 || bVal > 30)) {
+                shapePixelCount++;
+              }
             }
           }
         }
 
-        if (totalPixelCount > 0 && (solidPixelCount / totalPixelCount) >= 0.25) {
+        if (totalPixelCount > 0 && (shapePixelCount / totalPixelCount) >= 0.20) {
           mask.add('$r,$c');
         }
       }

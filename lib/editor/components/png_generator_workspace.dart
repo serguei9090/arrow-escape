@@ -1,0 +1,637 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../models/png_mask_model.dart';
+import '../utils/web_file_helper.dart';
+import '../components/interactive_level_canvas.dart';
+import '../../data/models/level.dart';
+import '../../data/level_generator/level_generator_v2.dart';
+import '../../data/level_generator/solver.dart';
+import '../../data/level_binary_codec.dart';
+
+class PngGeneratorWorkspace extends StatefulWidget {
+  const PngGeneratorWorkspace({super.key});
+
+  @override
+  State<PngGeneratorWorkspace> createState() => _PngGeneratorWorkspaceState();
+}
+
+class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
+  final List<PngMaskModel> _pngMasks = [];
+  int _selectedDefaultGridSize = 25;
+
+  // Generation Pipeline State
+  bool _isGenerating = false;
+  double _generationProgress = 0.0;
+  int _generatedCount = 0;
+  int _solvableCount = 0;
+  final StringBuffer _logBuffer = StringBuffer();
+  List<LevelModel> _generatedLevels = [];
+
+  Future<void> _uploadCustomPngFiles() async {
+    try {
+      final namedBytesList =
+          await WebFileHelper.pickMultipleFiles(accept: 'image/png');
+      if (namedBytesList.isEmpty) return;
+
+      int addedCount = 0;
+      for (final item in namedBytesList) {
+        // Detect grid size from filename if formatted like '30x30_sword.png'
+        int gridSize = _selectedDefaultGridSize;
+        final nameLower = item.name.toLowerCase();
+        final match = RegExp(r'(\d+)x(\d+)').firstMatch(nameLower);
+        if (match != null) {
+          gridSize = int.parse(match.group(1)!).clamp(5, 40);
+        }
+
+        final parsedMask =
+            await WebFileHelper.parsePngToGridMask(item.bytes, gridSize);
+
+        _pngMasks.add(
+          PngMaskModel(
+            id: 'mask_${DateTime.now().millisecondsSinceEpoch}_$addedCount',
+            filename: item.name,
+            subfolder: '${gridSize}x$gridSize',
+            imageBytes: item.bytes,
+            gridSize: gridSize,
+            mask: parsedMask,
+          ),
+        );
+        addedCount++;
+      }
+
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully loaded $addedCount PNG shape masks!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load PNG masks: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeMask(int index) {
+    setState(() {
+      _pngMasks.removeAt(index);
+    });
+  }
+
+  void _clearAllMasks() {
+    setState(() {
+      _pngMasks.clear();
+      _generatedLevels.clear();
+      _logBuffer.clear();
+    });
+  }
+
+  Future<void> _startBulkGeneration() async {
+    if (_pngMasks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please load or upload PNG shape masks first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGenerating = true;
+      _generationProgress = 0.0;
+      _generatedCount = 0;
+      _solvableCount = 0;
+      _logBuffer.clear();
+      _generatedLevels.clear();
+    });
+
+    _logBuffer.writeln('──────────────────────────────────────────────');
+    _logBuffer.writeln('  PNG Mask Level Generator Pipeline Started');
+    _logBuffer.writeln('  Target Masks: ${_pngMasks.length}');
+    _logBuffer.writeln('──────────────────────────────────────────────\n');
+
+    final generated = <LevelModel>[];
+
+    for (int i = 0; i < _pngMasks.length; i++) {
+      final pMask = _pngMasks[i];
+      final targetLevelNum = i + 1;
+
+      _logBuffer.writeln('Generating Level #$targetLevelNum from "${pMask.filename}" (${pMask.gridSize}x${pMask.gridSize})...');
+
+      // Run generator seeded by level number
+      var level = LevelGeneratorV2.generateLevel(targetLevelNum);
+      
+      // Apply the parsed PNG mask shape
+      if (pMask.mask.isNotEmpty) {
+        level = level.copyWith(
+          gridSize: pMask.gridSize,
+          mask: Set.from(pMask.mask),
+        );
+      }
+
+      // Verify solvability using LevelSolver
+      final sol = LevelSolver.solve(level);
+      final isSolvable = sol != null;
+      if (isSolvable) {
+        _solvableCount++;
+        level = level.copyWith(solutionOrder: sol);
+      }
+
+      generated.add(level);
+      _generatedCount++;
+      _generationProgress = (i + 1) / _pngMasks.length;
+
+      _logBuffer.writeln(
+          '  └─ Result: ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | Mask Cells: ${level.mask.length}');
+
+      setState(() {});
+      await Future.delayed(const Duration(milliseconds: 30));
+    }
+
+    _logBuffer.writeln('\n──────────────────────────────────────────────');
+    _logBuffer.writeln(
+        ' Generation Complete: $_generatedCount levels built ($_solvableCount solvable)');
+    _logBuffer.writeln('──────────────────────────────────────────────');
+
+    setState(() {
+      _generatedLevels = generated;
+      _isGenerating = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Successfully generated $_generatedCount levels! Ready to export.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  void _exportGeneratedLevelPack() {
+    if (_generatedLevels.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No generated level pack available to export.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final encoded = encodeLevels(_generatedLevels);
+      WebFileHelper.downloadBytes(
+          encoded, 'png_generated_pack_${_generatedLevels.length}.bin');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Exported ${_generatedLevels.length} levels to png_generated_pack.bin!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Export error: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF0B0D12),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Toolbar
+          Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'PNG Mask Level Pack Generator',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload PNG shape masks, inspect grid overlays, and batch-generate standalone .bin level packs.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+
+              // Default Grid Size Dropdown
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Grid Size: ',
+                      style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  DropdownButton<int>(
+                    value: _selectedDefaultGridSize,
+                    dropdownColor: const Color(0xFF1C202C),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    items: [10, 15, 20, 25, 30, 35, 40]
+                        .map((g) => DropdownMenuItem(
+                            value: g, child: Text('${g}x$g Grid')))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _selectedDefaultGridSize = val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(width: 16),
+
+              // Upload Action Buttons
+              ElevatedButton.icon(
+                onPressed: _isGenerating ? null : _uploadCustomPngFiles,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal.shade700,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                ),
+                icon: const Icon(LucideIcons.upload, size: 16),
+                label: const Text('Upload PNG Masks'),
+              ),
+              const SizedBox(width: 12),
+
+              if (_pngMasks.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: _isGenerating ? null : _clearAllMasks,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: Colors.redAccent),
+                  ),
+                  icon: const Icon(LucideIcons.trash2, size: 16),
+                  label: const Text('Clear All'),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Main Workspace Split View (PNG Gallery Left + Generator Log Right)
+          Expanded(
+            child: Row(
+              children: [
+                // Left PNG Mask Gallery Grid (Flex 7)
+                Expanded(
+                  flex: 7,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141720),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'LOADED PNG MASKS (${_pngMasks.length})',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white70,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(color: Colors.white10, height: 20),
+
+                        if (_pngMasks.isEmpty)
+                          Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    LucideIcons.imagePlus,
+                                    size: 56,
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'No PNG shape masks loaded yet.',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Click "Upload PNG Masks" above to select shape images.\nThe background stripper will extract shape masks automatically!',
+                                    style: TextStyle(
+                                        color: Colors.white38, fontSize: 13),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: GridView.builder(
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 220,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 0.85,
+                              ),
+                              itemCount: _pngMasks.length,
+                              itemBuilder: (context, index) {
+                                final maskModel = _pngMasks[index];
+                                return _buildPngMaskCard(maskModel, index);
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 20),
+
+                // Right Generation Console Log & Download Controls (Flex 4)
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141720),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'GENERATOR PIPELINE',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white70,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const Divider(color: Colors.white10, height: 20),
+
+                        // Action Buttons
+                        ElevatedButton.icon(
+                          onPressed: (_pngMasks.isEmpty || _isGenerating)
+                              ? null
+                              : _startBulkGeneration,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.indigoAccent,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: Icon(
+                            _isGenerating
+                                ? LucideIcons.loader
+                                : LucideIcons.play,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isGenerating
+                                ? 'Generating (${(_generationProgress * 100).toInt()}%)...'
+                                : 'Generate Level Pack',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        if (_isGenerating) ...[
+                          LinearProgressIndicator(
+                            value: _generationProgress,
+                            backgroundColor: Colors.white12,
+                            color: Colors.indigoAccent,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        if (_generatedLevels.isNotEmpty) ...[
+                          ElevatedButton.icon(
+                            onPressed: _exportGeneratedLevelPack,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(LucideIcons.download, size: 18),
+                            label: Text(
+                              'Download Level Pack (${_generatedLevels.length} .bin)',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Log Console Window
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF090B0F),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: SingleChildScrollView(
+                              reverse: true,
+                              child: Text(
+                                _logBuffer.isEmpty
+                                    ? '// Console logs will appear here during generation...'
+                                    : _logBuffer.toString(),
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Colors.greenAccent,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPngMaskCard(PngMaskModel maskModel, int index) {
+    // Generate a temporary level model to render the parsed grid mask preview
+    final previewLevel = LevelModel(
+      levelNumber: index + 1,
+      gridSize: maskModel.gridSize,
+      arrows: [],
+      patternName: maskModel.filename,
+      difficulty: Difficulty.easy,
+      solutionOrder: [],
+      maskShape: MaskShape.square,
+      mask: maskModel.mask,
+      orphanDots: [],
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B1E28),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Image / Mask Preview Split Header
+          Expanded(
+            child: ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(14)),
+              child: Stack(
+                children: [
+                  Row(
+                    children: [
+                      // Original PNG Image
+                      Expanded(
+                        child: Container(
+                          color: Colors.black45,
+                          child: Image.memory(
+                            maskModel.imageBytes,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                      const VerticalDivider(color: Colors.white12, width: 1),
+                      // Parsed Grid Mask Overlay
+                      Expanded(
+                        child: Container(
+                          color: const Color(0xFF141720),
+                          padding: const EdgeInsets.all(4),
+                          child: LevelThumbnailCanvas(level: previewLevel),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: IconButton(
+                      onPressed: () => _removeMask(index),
+                      icon: const Icon(LucideIcons.x,
+                          color: Colors.redAccent, size: 16),
+                      tooltip: 'Remove Mask',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Metadata Card Footer
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Colors.white10)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  maskModel.filename,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${maskModel.gridSize}x${maskModel.gridSize}',
+                        style: const TextStyle(
+                            color: Colors.indigoAccent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${maskModel.mask.length} cells',
+                      style: const TextStyle(
+                          color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'models/editor_state.dart';
+import 'components/web_header_nav.dart';
 import 'components/editor_sidebar.dart';
 import 'components/level_gallery_view.dart';
+import 'components/png_generator_workspace.dart';
 import 'dialogs/single_level_editor_dialog.dart';
 import 'dialogs/bulk_generator_dialog.dart';
 import '../../data/level_binary_codec.dart';
@@ -17,7 +19,7 @@ class LevelEditorApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => EditorState(),
       child: MaterialApp(
-        title: 'Arrow Escape Level Editor',
+        title: 'Arrow Escape Studio Suite',
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF0B0D12),
@@ -41,6 +43,8 @@ class LevelEditorHomeScreen extends StatefulWidget {
 }
 
 class _LevelEditorHomeScreenState extends State<LevelEditorHomeScreen> {
+  WebPageTab _activeTab = WebPageTab.binLevelExplorer;
+
   @override
   void initState() {
     super.initState();
@@ -86,17 +90,41 @@ class _LevelEditorHomeScreenState extends State<LevelEditorHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          // Left Navigation & Tool Sidebar
-          EditorSidebar(
-            onOpenBulkGenerator: () => _openBulkGenerator(context),
+          // Top Navigation Bar
+          WebHeaderNav(
+            activeTab: _activeTab,
+            onTabChanged: (tab) {
+              setState(() {
+                _activeTab = tab;
+              });
+            },
           ),
 
-          // Right Workspace & Level Gallery Grid
+          // Main Workspace Page Switcher
           Expanded(
-            child: LevelGalleryView(
-              onEditLevel: (level) => _openSingleLevelEditor(context, level),
+            child: IndexedStack(
+              index: _activeTab == WebPageTab.binLevelExplorer ? 0 : 1,
+              children: [
+                // Page 1: .bin Level Explorer & Editor
+                Row(
+                  children: [
+                    EditorSidebar(
+                      onOpenBulkGenerator: () => _openBulkGenerator(context),
+                    ),
+                    Expanded(
+                      child: LevelGalleryView(
+                        onEditLevel: (level) =>
+                            _openSingleLevelEditor(context, level),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Page 2: PNG Mask Bulk Level Generator
+                const PngGeneratorWorkspace(),
+              ],
             ),
           ),
         ],

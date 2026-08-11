@@ -60,6 +60,12 @@ flutter:
     - assets/audio/
     - assets/fonts/
     - assets/levels.bin
+    - assets/PNG_Levels/
+    - assets/PNG_Levels/10x10/
+    - assets/PNG_Levels/15x15/
+    - assets/PNG_Levels/25x25/
+    - assets/PNG_Levels/30x30/
+    - assets/PNG_Levels/40x40/
 
   fonts:
     - family: Nunito
