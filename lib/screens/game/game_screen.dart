@@ -636,6 +636,138 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _gameState?.forceGameOver();
   }
 
+  void _handleHint() {
+    final progress = context.read<ProgressRepository>();
+    if (_gameState == null || _showingComplete || _showingGameOver) return;
+
+    if (progress.hints > 0) {
+      final solvableId = _gameState!.findNextSolvableArrowId();
+      if (solvableId != null) {
+        progress.consumeHint();
+        _gameState!.setHintArrow(solvableId);
+        if (progress.vibrationEnabled) HapticFeedback.selectionClick();
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Hint: Tap the highlighted arrow!',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      // Offer rewarded ad or purchase for extra hints
+      _showGetMoreItemsDialog(isHint: true);
+    }
+  }
+
+  void _handleSolve() {
+    final progress = context.read<ProgressRepository>();
+    if (_gameState == null || _showingComplete || _showingGameOver) return;
+
+    if (progress.solves > 0) {
+      final solvableId = _gameState!.findNextSolvableArrowId();
+      if (solvableId != null) {
+        progress.consumeSolve();
+        if (progress.vibrationEnabled) HapticFeedback.mediumImpact();
+        // Trigger auto-move for the next solvable arrow
+        _game.triggerArrowTap(solvableId);
+      }
+    } else {
+      // Offer rewarded ad or purchase for extra solves
+      _showGetMoreItemsDialog(isHint: false);
+    }
+  }
+
+  void _showGetMoreItemsDialog({required bool isHint}) {
+    final adManager = context.read<AdManager>();
+    final progress = context.read<ProgressRepository>();
+    final itemTitle = isHint ? 'Hint' : 'Auto-Solve';
+    final cost = isHint ? ProgressRepository.hintCoinCost : ProgressRepository.solveCoinCost;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              isHint ? LucideIcons.lightbulb : LucideIcons.wand2,
+              color: isHint ? AppColors.accentGold : AppColors.primary,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Get More ${itemTitle}s',
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Out of ${itemTitle.toLowerCase()}s! Watch an ad or spend $cost coins to get 2 more.',
+          style: GoogleFonts.nunito(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(color: AppColors.textSecondary),
+            ),
+          ),
+          if (progress.coins >= cost)
+            ElevatedButton.icon(
+              icon: const Icon(LucideIcons.coins, size: 18),
+              label: Text('Buy ($cost)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentGold,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                if (isHint) {
+                  progress.buyHintsWithCoins();
+                } else {
+                  progress.buySolvesWithCoins();
+                }
+              },
+            ),
+          ElevatedButton.icon(
+            icon: const Icon(LucideIcons.video, size: 18),
+            label: const Text('Watch Ad (+2)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              adManager.showRewardedWithLoader(
+                context,
+                onRewarded: () {
+                  if (isHint) {
+                    progress.addHints(2);
+                  } else {
+                    progress.addSolves(2);
+                  }
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show a premium loading screen while the level is being generated
@@ -770,6 +902,49 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       ],
                     );
                   },
+                ),
+              ),
+
+              // ── Hint & Auto-Solve Action Bar ────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Hint Button
+                    ElevatedButton.icon(
+                      onPressed: _handleHint,
+                      icon: const Icon(LucideIcons.lightbulb, size: 18),
+                      label: Text('Hint (${progress.hints})'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surface,
+                        foregroundColor: AppColors.accentGold,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: AppColors.accentGold.withValues(alpha: 0.5), width: 1.5),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                    ),
+
+                    // Auto-Solve Button
+                    ElevatedButton.icon(
+                      onPressed: _handleSolve,
+                      icon: const Icon(LucideIcons.wand2, size: 18),
+                      label: Text('Solve (${progress.solves})'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surface,
+                        foregroundColor: AppColors.primary,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5), width: 1.5),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
