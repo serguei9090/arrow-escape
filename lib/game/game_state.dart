@@ -33,7 +33,8 @@ class GameState extends ChangeNotifier {
   final void Function() onGameOver;
   final void Function() onLifeLost;
   final void Function() onDeadlock;
-  final bool isInfiniteLives;
+  final bool? _isInfiniteLives;
+  bool get isInfiniteLives => _isInfiniteLives ?? false;
 
   GameState({
     required LevelModel level,
@@ -41,8 +42,8 @@ class GameState extends ChangeNotifier {
     required this.onGameOver,
     required this.onLifeLost,
     required this.onDeadlock,
-    this.isInfiniteLives = false,
-  }) {
+    bool isInfiniteLives = false,
+  })  : _isInfiniteLives = isInfiniteLives {
     _currentLevel = level;
     _arrows = level.arrows.map((a) => a.copyWith()).toList();
     _orphanDots = {for (final od in level.orphanDots) od.key: od.type};
