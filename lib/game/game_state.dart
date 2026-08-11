@@ -33,6 +33,7 @@ class GameState extends ChangeNotifier {
   final void Function() onGameOver;
   final void Function() onLifeLost;
   final void Function() onDeadlock;
+  final bool isInfiniteLives;
 
   GameState({
     required LevelModel level,
@@ -40,6 +41,7 @@ class GameState extends ChangeNotifier {
     required this.onGameOver,
     required this.onLifeLost,
     required this.onDeadlock,
+    this.isInfiniteLives = false,
   }) {
     _currentLevel = level;
     _arrows = level.arrows.map((a) => a.copyWith()).toList();
@@ -244,9 +246,11 @@ class GameState extends ChangeNotifier {
 
   TapResult _handleBlocked(int index, ArrowModel arrow, String arrowId) {
     _arrows[index] = arrow.copyWith(state: ArrowState.blocked);
-    _lives--;
-    _livesLost++;
-    onLifeLost();
+    if (!isInfiniteLives) {
+      _lives--;
+      _livesLost++;
+      onLifeLost();
+    }
 
     // Reset arrow state after animation
     Future.delayed(AppConstants.arrowShakeDuration, () {
@@ -257,7 +261,7 @@ class GameState extends ChangeNotifier {
       }
     });
 
-    if (_lives <= 0) {
+    if (!isInfiniteLives && _lives <= 0) {
       _isGameOver = true;
       onGameOver();
       notifyListeners();
@@ -276,9 +280,11 @@ class GameState extends ChangeNotifier {
         _arrows[index] = arrow.copyWith(state: ArrowState.blocked);
       }
     }
-    _lives--;
-    _livesLost++;
-    onLifeLost();
+    if (!isInfiniteLives) {
+      _lives--;
+      _livesLost++;
+      onLifeLost();
+    }
 
     // Reset both after animation
     Future.delayed(AppConstants.arrowShakeDuration, () {
@@ -291,7 +297,7 @@ class GameState extends ChangeNotifier {
       notifyListeners();
     });
 
-    if (_lives <= 0) {
+    if (!isInfiniteLives && _lives <= 0) {
       _isGameOver = true;
       onGameOver();
     }

@@ -44,6 +44,7 @@ class FlameGamePreviewState extends State<FlameGamePreview> {
   void _initGame() {
     _gameState = GameState(
       level: widget.level,
+      isInfiniteLives: true, // Infinite lives for Level Editor playtesting!
       onLevelComplete: () {
         widget.onComplete?.call();
       },
