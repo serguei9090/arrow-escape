@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
 
     <application
-        android:label="Arrow Escape"
+        android:label="Vector Escape"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:theme="@style/LaunchTheme"
