@@ -17,10 +17,10 @@ class FlameGamePreview extends StatefulWidget {
   });
 
   @override
-  State<FlameGamePreview> createState() => _FlameGamePreviewState();
+  State<FlameGamePreview> createState() => FlameGamePreviewState();
 }
 
-class _FlameGamePreviewState extends State<FlameGamePreview> {
+class FlameGamePreviewState extends State<FlameGamePreview> {
   late ArrowPuzzleGame _game;
   late GameState _gameState;
   int _gameKeyCounter = 0;
@@ -34,8 +34,10 @@ class _FlameGamePreviewState extends State<FlameGamePreview> {
   @override
   void didUpdateWidget(covariant FlameGamePreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.level != widget.level) {
-      _resetGame();
+    // Only reset if level number or grid size explicitly changed
+    if (oldWidget.level.levelNumber != widget.level.levelNumber ||
+        oldWidget.level.gridSize != widget.level.gridSize) {
+      resetGame();
     }
   }
 
@@ -61,7 +63,15 @@ class _FlameGamePreviewState extends State<FlameGamePreview> {
     );
   }
 
-  void _resetGame() {
+  /// Triggers full Flame slide & exit animation for the specified arrow!
+  void triggerArrowMove(String arrowId) {
+    if (_game.gridComponent != null) {
+      _game.gridComponent!.triggerArrowTap(arrowId);
+    }
+  }
+
+  /// Resets the Flame game board back to starting layout
+  void resetGame() {
     setState(() {
       _gameKeyCounter++;
       _initGame();
@@ -100,7 +110,7 @@ class _FlameGamePreviewState extends State<FlameGamePreview> {
                 right: 12,
                 top: 12,
                 child: FloatingActionButton.small(
-                  onPressed: _resetGame,
+                  onPressed: resetGame,
                   backgroundColor: Colors.black87,
                   foregroundColor: Colors.white,
                   tooltip: 'Reset Flame Game Board',

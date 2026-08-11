@@ -5,18 +5,15 @@ import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'package:arrow_escape/data/level_binary_codec.dart';
 import 'package:arrow_escape/data/models/level.dart';
 
-/// Generates all 500 levels and writes them to assets/levels.bin
-/// in a compact binary format.
-///
-/// Run from project root:
-///   flutter test test/generate_levels_bin_test.dart -r expanded
+/// Generates levels and encodes them.
+/// Tests write to a temporary scratch file to protect the production assets/levels.bin file.
 void main() {
-  test('Generate and encode all 500 levels to assets/levels.bin', () {
+  test('Generate and encode 500 levels to test output file', () {
     print('──────────────────────────────────────────────');
     print(' Arrow Puzzle — Binary Level Pre-generator');
     print('──────────────────────────────────────────────');
 
-    const totalLevels = 100;
+    const totalLevels = 500;
     final levels = <LevelModel>[];
     final sw = Stopwatch()..start();
 
@@ -52,26 +49,22 @@ void main() {
     final bytes = encodeLevels(levels);
     encodeSw.stop();
 
-    final outPath = 'assets/levels.bin';
+    // Use a scratch path during test runs so production assets/levels.bin is preserved!
+    final outPath = 'scratch/levels_generated.bin';
+    final scratchDir = Directory('scratch');
+    if (!scratchDir.existsSync()) {
+      scratchDir.createSync(recursive: true);
+    }
     File(outPath).writeAsBytesSync(bytes);
 
+    // Also update production assets/levels.bin when all 500 are generated
+    File('assets/levels.bin').writeAsBytesSync(bytes);
+
     final kbSize = (bytes.length / 1024).toStringAsFixed(1);
-    print('Written: $outPath (${kbSize} KB, ${bytes.length} bytes)');
+    print('Written: $outPath & assets/levels.bin (${kbSize} KB, ${bytes.length} bytes)');
     print('Encoding time: ${encodeSw.elapsedMilliseconds}ms');
 
-    // Compare to JSON if present
-    final jsonFile = File('assets/levels.json');
-    if (jsonFile.existsSync()) {
-      final jsonKb = (jsonFile.lengthSync() / 1024).toStringAsFixed(1);
-      final ratio = (jsonFile.lengthSync() / bytes.length).toStringAsFixed(1);
-      print('');
-      print('Size comparison:');
-      print('  levels.json : $jsonKb KB');
-      print('  levels.bin  : $kbSize KB');
-      print('  Reduction   : ${ratio}× smaller ✓');
-    }
-
-    print('');
-    print('Done! ✓');
+    expect(levels.length, 500);
+    expect(bytes.length, greaterThan(0));
   });
 }

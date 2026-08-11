@@ -43,11 +43,13 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
   String? _selectedCell;
 
   EditorViewMode _viewMode = EditorViewMode.flameGameEngine;
+  final GlobalKey<FlameGamePreviewState> _flameGameKey =
+      GlobalKey<FlameGamePreviewState>();
 
-  // Solver Step-by-step state
+  // Solver Step-by-step state & Auto-Play Controller
   SolveResult? _solveResult;
-  bool _isPlayingSolveAnimation = false;
-  int _currentSolveStepIndex = -1;
+  bool _isAutoSolving = false;
+  int _currentSolveStepIndex = 0;
   Timer? _solveTimer;
 
   // Interactive Play-Test Mode state
@@ -95,43 +97,79 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
         isSolvable: sol != null,
         solutionOrder: sol ?? [],
       );
+      _currentSolveStepIndex = 0;
+      _isAutoSolving = false;
     });
   }
 
-  void _playSolveAnimation() {
+  // ── Auto Solver Controls (Play / Pause / Step / Reset) ──────────────────
+
+  void _startAutoSolving() {
     if (_solveResult == null || !_solveResult!.isSolvable) return;
     _solveTimer?.cancel();
+
     setState(() {
-      _isPlayTesting = false;
-      _isPlayingSolveAnimation = true;
-      _currentSolveStepIndex = 0;
+      _isAutoSolving = true;
     });
 
-    _solveTimer = Timer.periodic(const Duration(milliseconds: 600), (t) {
-      if (_currentSolveStepIndex + 1 < _solveResult!.solutionOrder.length) {
-        setState(() {
-          _currentSolveStepIndex++;
-        });
+    _solveTimer = Timer.periodic(const Duration(milliseconds: 650), (t) {
+      if (_currentSolveStepIndex < _solveResult!.solutionOrder.length) {
+        _triggerSingleSolverStep();
       } else {
-        t.cancel();
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            setState(() {
-              _isPlayingSolveAnimation = false;
-              _currentSolveStepIndex = -1;
-            });
-          }
-        });
+        _pauseAutoSolving();
       }
     });
   }
+
+  void _pauseAutoSolving() {
+    _solveTimer?.cancel();
+    setState(() {
+      _isAutoSolving = false;
+    });
+  }
+
+  void _triggerSingleSolverStep() {
+    if (_solveResult == null || !_solveResult!.isSolvable) return;
+    if (_currentSolveStepIndex >= _solveResult!.solutionOrder.length) return;
+
+    final targetArrowId = _solveResult!.solutionOrder[_currentSolveStepIndex];
+
+    if (_viewMode == EditorViewMode.flameGameEngine) {
+      // Trigger real Flame engine arrow slide & exit animation!
+      _flameGameKey.currentState?.triggerArrowMove(targetArrowId);
+    } else {
+      // 2D Canvas Fallback step clearance
+      setState(() {
+        _playtestClearedArrowIds.add(targetArrowId);
+      });
+    }
+
+    setState(() {
+      _currentSolveStepIndex++;
+    });
+  }
+
+  void _resetSolverBoard() {
+    _solveTimer?.cancel();
+    setState(() {
+      _isAutoSolving = false;
+      _currentSolveStepIndex = 0;
+      _playtestClearedArrowIds.clear();
+    });
+
+    if (_viewMode == EditorViewMode.flameGameEngine) {
+      _flameGameKey.currentState?.resetGame();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   void _togglePlayTestingMode() {
     setState(() {
       _isPlayTesting = !_isPlayTesting;
       _playtestClearedArrowIds.clear();
-      _isPlayingSolveAnimation = false;
-      _currentSolveStepIndex = -1;
+      _isAutoSolving = false;
+      _currentSolveStepIndex = 0;
     });
   }
 
@@ -338,6 +376,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
   @override
   Widget build(BuildContext context) {
     final isSolvable = _solveResult?.isSolvable ?? false;
+    final totalSteps = _solveResult?.solutionOrder.length ?? 0;
 
     return Dialog(
       backgroundColor: const Color(0xFF141720),
@@ -439,7 +478,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
 
             const SizedBox(height: 16),
 
-            // Toolbar Controls
+            // Toolbar Controls & Interactive Auto-Solver Controller
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -510,7 +549,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                     ],
                   ),
 
-                  // Actions: Import PNG & Solver
+                  // Actions: Import PNG Mask & Regenerate
                   ElevatedButton.icon(
                     onPressed: _importPngMask,
                     style: ElevatedButton.styleFrom(
@@ -529,20 +568,84 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                     icon: const Icon(LucideIcons.refreshCw, size: 16),
                     label: const Text('Regenerate Layout'),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: isSolvable ? _playSolveAnimation : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple.shade700,
-                      foregroundColor: Colors.white,
+
+                  // ── Full Play / Pause / Step / Reset Auto-Solver Controls ──
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade900.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.purple.shade400),
                     ),
-                    icon: Icon(
-                        _isPlayingSolveAnimation
-                            ? LucideIcons.loader
-                            : LucideIcons.play,
-                        size: 16),
-                    label: Text(_isPlayingSolveAnimation
-                        ? 'Step ${_currentSolveStepIndex + 1}/${_solveResult?.solutionOrder.length}'
-                        : 'Solver Trace'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Play / Pause Toggle Button
+                        IconButton(
+                          onPressed: isSolvable
+                              ? (_isAutoSolving
+                                  ? _pauseAutoSolving
+                                  : _startAutoSolving)
+                              : null,
+                          icon: Icon(
+                            _isAutoSolving
+                                ? LucideIcons.pause
+                                : LucideIcons.play,
+                            color: isSolvable
+                                ? Colors.purpleAccent
+                                : Colors.white24,
+                            size: 18,
+                          ),
+                          tooltip: _isAutoSolving
+                              ? 'Pause Auto Solve'
+                              : 'Play Auto Solve',
+                        ),
+
+                        // Step Forward Button
+                        IconButton(
+                          onPressed: isSolvable &&
+                                  _currentSolveStepIndex < totalSteps
+                              ? _triggerSingleSolverStep
+                              : null,
+                          icon: Icon(
+                            LucideIcons.stepForward,
+                            color: isSolvable &&
+                                    _currentSolveStepIndex < totalSteps
+                                ? Colors.white
+                                : Colors.white24,
+                            size: 18,
+                          ),
+                          tooltip: 'Step Next Arrow',
+                        ),
+
+                        // Reset Board Button
+                        IconButton(
+                          onPressed: isSolvable ? _resetSolverBoard : null,
+                          icon: Icon(
+                            LucideIcons.rotateCcw,
+                            color: isSolvable
+                                ? Colors.orangeAccent
+                                : Colors.white24,
+                            size: 18,
+                          ),
+                          tooltip: 'Reset Board Layout',
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        // Step Counter Indicator
+                        Text(
+                          'Step $_currentSolveStepIndex / $totalSteps',
+                          style: const TextStyle(
+                            color: Colors.purpleAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -560,6 +663,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                     child: Center(
                       child: _viewMode == EditorViewMode.flameGameEngine
                           ? FlameGamePreview(
+                              key: _flameGameKey,
                               level: _buildCurrentLevelModel(),
                             )
                           : InteractiveLevelCanvas(
@@ -654,7 +758,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                               '• Smooth slide & exit animations\n'
                               '• Blocked shake animations\n'
                               '• Long-press trajectory path previews\n\n'
-                              'Tap any arrow on the board to playtest live!',
+                              'Use Play ▶ / Pause ⏸ / Step ⏭ / Reset ↺ in the toolbar to auto-solve with real Flame animations!',
                               style: TextStyle(
                                   color: Colors.white70, fontSize: 13, height: 1.4),
                             ),
