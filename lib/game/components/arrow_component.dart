@@ -126,7 +126,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks, HasPaint {
     _previewPath = null;
     if (wasPreview) return; // long-press released — don’t trigger a move
     if (_isAnimating) return;
-    _triggerMove();
+    triggerMove();
   }
 
   @override
