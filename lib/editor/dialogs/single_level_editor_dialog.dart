@@ -8,6 +8,12 @@ import '../../data/level_generator/level_generator_v2.dart';
 import '../components/flame_game_preview.dart';
 import '../utils/web_file_helper.dart';
 
+class SolveResult {
+  final bool isSolvable;
+  final List<String> solutionOrder;
+  const SolveResult({required this.isSolvable, required this.solutionOrder});
+}
+
 class SingleLevelEditorDialog extends StatefulWidget {
   final LevelModel initialLevel;
   final Function(LevelModel updatedLevel) onSave;
