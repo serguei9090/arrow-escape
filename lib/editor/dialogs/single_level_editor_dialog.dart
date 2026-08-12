@@ -36,6 +36,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
   late String _patternName;
   late List<ArrowModel> _arrows;
   late Set<String> _mask;
+  late List<OrphanDot> _orphanDots;
 
   final GlobalKey<FlameGamePreviewState> _flameGameKey =
       GlobalKey<FlameGamePreviewState>();
@@ -56,6 +57,9 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
     _patternName = lvl.patternName;
     _arrows = lvl.arrows.map((a) => a.copyWith()).toList();
     _mask = Set.from(lvl.mask);
+    _orphanDots = lvl.orphanDots
+        .map((od) => OrphanDot(row: od.row, col: od.col, type: od.type))
+        .toList();
     _runSolverCheck();
   }
 
@@ -75,7 +79,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
       solutionOrder: _solveResult?.solutionOrder ?? [],
       maskShape: _maskShape,
       mask: _mask,
-      orphanDots: [],
+      orphanDots: _orphanDots,
     );
   }
 
@@ -186,6 +190,9 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
       _gridSize = genLevel.gridSize.clamp(5, 40);
       _mask = Set.from(genLevel.mask);
       _arrows = genLevel.arrows.map((a) => a.copyWith()).toList();
+      _orphanDots = genLevel.orphanDots
+          .map((od) => OrphanDot(row: od.row, col: od.col, type: od.type))
+          .toList();
     });
     _runSolverCheck();
   }
@@ -495,6 +502,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                             'Renders the authentic Flame engine components from your mobile app:\n\n'
                             '• Real arrowhead carets & vector graphics\n'
                             '• Striped paired arrows & color locks\n'
+                            '• Redirection dots (Orphan Dots)\n'
                             '• Smooth slide & exit animations\n'
                             '• Blocked shake animations\n'
                             '• Long-press trajectory path previews\n\n'
