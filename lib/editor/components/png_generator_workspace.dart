@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/png_mask_model.dart';
 import '../utils/web_file_helper.dart';
@@ -27,6 +28,72 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
   int _solvableCount = 0;
   final StringBuffer _logBuffer = StringBuffer();
   List<LevelModel> _generatedLevels = [];
+
+  Future<void> _loadBundledSamples() async {
+    try {
+      final samples = [
+        {
+          'path': 'assets/PNG_Levels/15x15/house.png',
+          'name': '15x15_house.png',
+          'grid': 15
+        },
+        {
+          'path': 'assets/PNG_Levels/25x25/ship.png',
+          'name': '25x25_ship.png',
+          'grid': 25
+        },
+        {
+          'path': 'assets/PNG_Levels/30x30/dog.png',
+          'name': '30x30_dog.png',
+          'grid': 30
+        },
+      ];
+
+      int addedCount = 0;
+      for (final s in samples) {
+        final path = s['path'] as String;
+        final name = s['name'] as String;
+        final gridSize = s['grid'] as int;
+
+        final bytesData = await rootBundle.load(path);
+        final bytes = bytesData.buffer.asUint8List();
+        final parsedMask =
+            await WebFileHelper.parsePngToGridMask(bytes, gridSize);
+
+        _pngMasks.add(
+          PngMaskModel(
+            id: 'mask_${DateTime.now().millisecondsSinceEpoch}_${_pngMasks.length}',
+            filename: name,
+            subfolder: '${gridSize}x$gridSize',
+            imageBytes: bytes,
+            gridSize: gridSize,
+            mask: parsedMask,
+          ),
+        );
+        addedCount++;
+      }
+
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Successfully loaded $addedCount sample PNG masks (House 15x15, Ship 25x25, Dog 30x30)!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load sample PNG masks: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _uploadCustomPngFiles() async {
     try {
@@ -126,11 +193,12 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
       final pMask = _pngMasks[i];
       final targetLevelNum = i + 1;
 
-      _logBuffer.writeln('Generating Level #$targetLevelNum from "${pMask.filename}" (${pMask.gridSize}x${pMask.gridSize})...');
+      _logBuffer.writeln(
+          'Generating Level #$targetLevelNum from "${pMask.filename}" (${pMask.gridSize}x${pMask.gridSize})...');
 
       // Run generator seeded by level number
       var level = LevelGeneratorV2.generateLevel(targetLevelNum);
-      
+
       // Apply the parsed PNG mask shape
       if (pMask.mask.isNotEmpty) {
         level = level.copyWith(
@@ -270,6 +338,21 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
 
               const SizedBox(width: 16),
 
+              // Load Sample Masks Button
+              ElevatedButton.icon(
+                onPressed: _isGenerating ? null : _loadBundledSamples,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo.shade700,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                icon: const Icon(LucideIcons.sparkles, size: 16),
+                label: const Text('Load Samples'),
+              ),
+
+              const SizedBox(width: 12),
+
               // Upload Action Buttons
               ElevatedButton.icon(
                 onPressed: _isGenerating ? null : _uploadCustomPngFiles,
@@ -353,7 +436,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                                   ),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    'Click "Upload PNG Masks" above to select shape images.\nThe background stripper will extract shape masks automatically!',
+                                    'Click "Load Samples" to view House (15x15), Ship (25x25) & Dog (30x30)\nor click "Upload PNG Masks" to select custom shapes!',
                                     style: TextStyle(
                                         color: Colors.white38, fontSize: 13),
                                     textAlign: TextAlign.center,
