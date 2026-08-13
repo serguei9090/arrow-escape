@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/png_mask_model.dart';
 import '../utils/web_file_helper.dart';
 import '../components/interactive_level_canvas.dart';
+import '../../core/constants.dart';
 import '../../data/models/level.dart';
 import '../../data/level_generator/level_generator_v2.dart';
 import '../../data/level_generator/solver.dart';
@@ -20,6 +21,7 @@ class PngGeneratorWorkspace extends StatefulWidget {
 class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
   final List<PngMaskModel> _pngMasks = [];
   int _selectedDefaultGridSize = 25;
+  int _targetTotalLevelCount = 100;
 
   // Generation Pipeline State
   bool _isGenerating = false;
@@ -163,16 +165,6 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
   }
 
   Future<void> _startBulkGeneration() async {
-    if (_pngMasks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please load or upload PNG shape masks first.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     setState(() {
       _isGenerating = true;
       _generationProgress = 0.0;
@@ -183,28 +175,61 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     });
 
     _logBuffer.writeln('──────────────────────────────────────────────');
-    _logBuffer.writeln('  PNG Mask Level Generator Pipeline Started');
-    _logBuffer.writeln('  Target Masks: ${_pngMasks.length}');
+    _logBuffer.writeln('  PNG & Procedural Level Pack Generator Pipeline');
+    _logBuffer.writeln('  Total Target Pack Levels: $_targetTotalLevelCount');
+    _logBuffer.writeln('  Custom PNG Shape Masks Available: ${_pngMasks.length}');
+    _logBuffer.writeln('  Mandatory Tutorial Levels (1..3): Immutable');
     _logBuffer.writeln('──────────────────────────────────────────────\n');
 
     final generated = <LevelModel>[];
+    final remainingPngMasks = List<PngMaskModel>.from(_pngMasks);
 
-    for (int i = 0; i < _pngMasks.length; i++) {
-      final pMask = _pngMasks[i];
-      final targetLevelNum = i + 1;
+    for (int targetLevelNum = 1; targetLevelNum <= _targetTotalLevelCount; targetLevelNum++) {
+      LevelModel level;
+      String levelSourceTag;
 
-      _logBuffer.writeln(
-          'Generating Level #$targetLevelNum from "${pMask.filename}" (${pMask.gridSize}x${pMask.gridSize})...');
+      if (targetLevelNum <= AppConstants.tutorialLevels) {
+        // ── Mandatory Immutable Tutorial Levels 1, 2, 3 ──────────────────────
+        level = LevelGeneratorV2.generateLevel(targetLevelNum);
+        levelSourceTag = 'Mandatory Tutorial';
+      } else {
+        // ── Custom PNG Mask or Procedural Generator Population ───────────────
+        final targetGridSize = AppConstants.gridSizeForLevel(targetLevelNum);
 
-      // Run generator seeded by level number
-      var level = LevelGeneratorV2.generateLevel(targetLevelNum);
+        // Find best matching PNG mask for this level's grid size or complexity
+        int matchIdx = -1;
+        if (remainingPngMasks.isNotEmpty) {
+          // Exact grid match preferred
+          matchIdx = remainingPngMasks.indexWhere((m) => m.gridSize == targetGridSize);
+          if (matchIdx == -1) {
+            // Closest grid size match
+            int minDiff = 999;
+            for (int k = 0; k < remainingPngMasks.length; k++) {
+              final diff = (remainingPngMasks[k].gridSize - targetGridSize).abs();
+              if (diff < minDiff) {
+                minDiff = diff;
+                matchIdx = k;
+              }
+            }
+          }
+        }
 
-      // Apply the parsed PNG mask shape
-      if (pMask.mask.isNotEmpty) {
-        level = level.copyWith(
-          gridSize: pMask.gridSize,
-          mask: Set.from(pMask.mask),
-        );
+        if (matchIdx != -1) {
+          final pMask = remainingPngMasks.removeAt(matchIdx);
+          level = LevelGeneratorV2.generateLevel(targetLevelNum);
+          if (pMask.mask.isNotEmpty) {
+            level = level.copyWith(
+              gridSize: pMask.gridSize,
+              mask: Set.from(pMask.mask),
+              patternName: pMask.filename,
+            );
+          }
+          levelSourceTag = 'PNG Mask ("${pMask.filename}")';
+        } else {
+          // Procedural generation fallback via LevelGeneratorV2
+          level = LevelGeneratorV2.generateLevel(targetLevelNum);
+          levelSourceTag = 'Procedural V2';
+        }
       }
 
       // Verify solvability using LevelSolver
@@ -217,13 +242,13 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
 
       generated.add(level);
       _generatedCount++;
-      _generationProgress = (i + 1) / _pngMasks.length;
+      _generationProgress = targetLevelNum / _targetTotalLevelCount;
 
       _logBuffer.writeln(
-          '  └─ Result: ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | Mask Cells: ${level.mask.length}');
+          'L#$targetLevelNum [$levelSourceTag] | ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | ${level.gridSize}x${level.gridSize}');
 
       setState(() {});
-      await Future.delayed(const Duration(milliseconds: 30));
+      await Future.delayed(const Duration(milliseconds: 20));
     }
 
     _logBuffer.writeln('\n──────────────────────────────────────────────');
@@ -294,7 +319,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'PNG Mask Level Pack Generator',
+                    'PNG & Procedural Level Pack Generator',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -303,7 +328,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Upload PNG shape masks, inspect grid overlays, and batch-generate standalone .bin level packs.',
+                    'Preserves mandatory tutorials (L1..L3), matches custom PNG shape masks, and procedurally fills remaining levels.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
@@ -313,7 +338,35 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
               ),
               const Spacer(),
 
-              // Default Grid Size Dropdown
+              // Total Target Pack Levels Selector
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Total Pack Levels: ',
+                      style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  DropdownButton<int>(
+                    value: _targetTotalLevelCount,
+                    dropdownColor: const Color(0xFF1C202C),
+                    style: const TextStyle(
+                        color: Colors.indigoAccent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold),
+                    items: [10, 25, 50, 100, 200, 300, 500]
+                        .map((cnt) => DropdownMenuItem(
+                            value: cnt, child: Text('$cnt Levels')))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _targetTotalLevelCount = val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(width: 16),
+
+              // Default Grid Size Selector
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -482,22 +535,41 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'GENERATOR PIPELINE',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white70,
-                            letterSpacing: 1.1,
-                          ),
+                        Row(
+                          children: [
+                            const Text(
+                              'GENERATOR PIPELINE',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white70,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Target: $_targetTotalLevelCount Levels',
+                                style: const TextStyle(
+                                  color: Colors.indigoAccent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const Divider(color: Colors.white10, height: 20),
 
                         // Action Buttons
                         ElevatedButton.icon(
-                          onPressed: (_pngMasks.isEmpty || _isGenerating)
-                              ? null
-                              : _startBulkGeneration,
+                          onPressed: _isGenerating ? null : _startBulkGeneration,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.indigoAccent,
                             foregroundColor: Colors.white,
@@ -514,8 +586,8 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                           ),
                           label: Text(
                             _isGenerating
-                                ? 'Generating (${(_generationProgress * 100).toInt()}%)...'
-                                : 'Generate Level Pack',
+                                ? 'Generating L#$_generatedCount / $_targetTotalLevelCount (${(_generationProgress * 100).toInt()}%)...'
+                                : 'Generate Level Pack ($_targetTotalLevelCount Levels)',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -566,7 +638,10 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                               reverse: true,
                               child: Text(
                                 _logBuffer.isEmpty
-                                    ? '// Console logs will appear here during generation...'
+                                    ? '// Console logs will appear here during generation...\n'
+                                      '// Pack structure:\n'
+                                      '// • L1..L3: Mandatory Tutorials\n'
+                                      '// • L4..L$_targetTotalLevelCount: PNG shape masks + LevelGeneratorV2 procedural fill'
                                     : _logBuffer.toString(),
                                 style: const TextStyle(
                                   fontFamily: 'monospace',
