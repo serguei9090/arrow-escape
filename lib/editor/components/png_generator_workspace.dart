@@ -25,6 +25,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
 
   // Generation Pipeline State
   bool _isGenerating = false;
+  bool _cancelRequested = false;
   double _generationProgress = 0.0;
   int _generatedCount = 0;
   int _solvableCount = 0;
@@ -164,9 +165,18 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     });
   }
 
+  void _stopBulkGeneration() {
+    if (_isGenerating) {
+      setState(() {
+        _cancelRequested = true;
+      });
+    }
+  }
+
   Future<void> _startBulkGeneration() async {
     setState(() {
       _isGenerating = true;
+      _cancelRequested = false;
       _generationProgress = 0.0;
       _generatedCount = 0;
       _solvableCount = 0;
@@ -184,7 +194,32 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     final generated = <LevelModel>[];
     final remainingPngMasks = List<PngMaskModel>.from(_pngMasks);
 
-    for (int targetLevelNum = 1; targetLevelNum <= _targetTotalLevelCount; targetLevelNum++) {
+    for (int targetLevelNum = 1;
+        targetLevelNum <= _targetTotalLevelCount;
+        targetLevelNum++) {
+      if (_cancelRequested) {
+        _logBuffer.writeln(
+            '\n⚠️ Generation stopped by user at Level #$targetLevelNum.');
+        _logBuffer.writeln('  Discarded transient level pack data.');
+        _logBuffer.writeln('──────────────────────────────────────────────');
+        setState(() {
+          _generatedLevels.clear();
+          _generationProgress = 0.0;
+          _isGenerating = false;
+          _cancelRequested = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Generation stopped. Transient level pack discarded.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
+
       LevelModel level;
       String levelSourceTag;
 
@@ -200,12 +235,14 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
         int matchIdx = -1;
         if (remainingPngMasks.isNotEmpty) {
           // Exact grid match preferred
-          matchIdx = remainingPngMasks.indexWhere((m) => m.gridSize == targetGridSize);
+          matchIdx =
+              remainingPngMasks.indexWhere((m) => m.gridSize == targetGridSize);
           if (matchIdx == -1) {
             // Closest grid size match
             int minDiff = 999;
             for (int k = 0; k < remainingPngMasks.length; k++) {
-              final diff = (remainingPngMasks[k].gridSize - targetGridSize).abs();
+              final diff =
+                  (remainingPngMasks[k].gridSize - targetGridSize).abs();
               if (diff < minDiff) {
                 minDiff = diff;
                 matchIdx = k;
@@ -259,6 +296,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     setState(() {
       _generatedLevels = generated;
       _isGenerating = false;
+      _cancelRequested = false;
     });
 
     if (mounted) {
@@ -355,11 +393,13 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                         .map((cnt) => DropdownMenuItem(
                             value: cnt, child: Text('$cnt Levels')))
                         .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _targetTotalLevelCount = val);
-                      }
-                    },
+                    onChanged: _isGenerating
+                        ? null
+                        : (val) {
+                            if (val != null) {
+                              setState(() => _targetTotalLevelCount = val);
+                            }
+                          },
                   ),
                 ],
               ),
@@ -380,11 +420,13 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                         .map((g) => DropdownMenuItem(
                             value: g, child: Text('${g}x$g Grid')))
                         .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _selectedDefaultGridSize = val);
-                      }
-                    },
+                    onChanged: _isGenerating
+                        ? null
+                        : (val) {
+                            if (val != null) {
+                              setState(() => _selectedDefaultGridSize = val);
+                            }
+                          },
                   ),
                 ],
               ),
@@ -420,9 +462,9 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
               ),
               const SizedBox(width: 12),
 
-              if (_pngMasks.isNotEmpty)
+              if (_pngMasks.isNotEmpty && !_isGenerating)
                 OutlinedButton.icon(
-                  onPressed: _isGenerating ? null : _clearAllMasks,
+                  onPressed: _clearAllMasks,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.redAccent,
                     side: const BorderSide(color: Colors.redAccent),
@@ -567,30 +609,43 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                         ),
                         const Divider(color: Colors.white10, height: 20),
 
-                        // Action Buttons
-                        ElevatedButton.icon(
-                          onPressed: _isGenerating ? null : _startBulkGeneration,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigoAccent,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        // Action Buttons: Generate or Stop & Discard
+                        if (!_isGenerating)
+                          ElevatedButton.icon(
+                            onPressed: _startBulkGeneration,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigoAccent,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(LucideIcons.play, size: 18),
+                            label: Text(
+                              'Generate Level Pack ($_targetTotalLevelCount Levels)',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: _stopBulkGeneration,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.redAccent.shade700,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(LucideIcons.square, size: 18),
+                            label: Text(
+                              'Stop & Discard Generation (L#$_generatedCount / $_targetTotalLevelCount)',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
-                          icon: Icon(
-                            _isGenerating
-                                ? LucideIcons.loader
-                                : LucideIcons.play,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _isGenerating
-                                ? 'Generating L#$_generatedCount / $_targetTotalLevelCount (${(_generationProgress * 100).toInt()}%)...'
-                                : 'Generate Level Pack ($_targetTotalLevelCount Levels)',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
 
                         const SizedBox(height: 12),
 
@@ -598,12 +653,12 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                           LinearProgressIndicator(
                             value: _generationProgress,
                             backgroundColor: Colors.white12,
-                            color: Colors.indigoAccent,
+                            color: Colors.redAccent,
                           ),
                           const SizedBox(height: 12),
                         ],
 
-                        if (_generatedLevels.isNotEmpty) ...[
+                        if (_generatedLevels.isNotEmpty && !_isGenerating) ...[
                           ElevatedButton.icon(
                             onPressed: _exportGeneratedLevelPack,
                             style: ElevatedButton.styleFrom(
@@ -725,16 +780,17 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                       ),
                     ],
                   ),
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: IconButton(
-                      onPressed: () => _removeMask(index),
-                      icon: const Icon(LucideIcons.x,
-                          color: Colors.redAccent, size: 16),
-                      tooltip: 'Remove Mask',
+                  if (!_isGenerating)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: IconButton(
+                        onPressed: () => _removeMask(index),
+                        icon: const Icon(LucideIcons.x,
+                            color: Colors.redAccent, size: 16),
+                        tooltip: 'Remove Mask',
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
