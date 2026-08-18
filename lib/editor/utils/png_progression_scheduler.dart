@@ -174,104 +174,138 @@ class PngProgressionScheduler {
   }) {
     assert(rawItems.length == profiles.length);
 
-    final assignments = <LevelScheduleAssignment<T>>[];
-    final pool = List<int>.generate(profiles.length, (i) => i);
+    final assignments =
+        List<LevelScheduleAssignment<T>?>.filled(totalLevels, null);
+    final availablePool = List<int>.generate(profiles.length, (i) => i);
 
-    // Helper to score how well a candidate profile fits a target level
-    double scoreCandidate(
-        int idx, int levelNumber, LevelType type, int targetGrid) {
-      final p = profiles[idx];
-      final gridDiff = (p.gridSize - targetGrid).abs();
-      double score = 1000.0 - (gridDiff * 40.0);
+    // ── PASS 1: Priority Milestone Allocation (Boss & God slots) ───────────────
+    // Allocate Hero and high-complexity/large shapes to Boss and God levels first
+    for (int levelNum = AppConstants.tutorialLevels + 1;
+        levelNum <= totalLevels;
+        levelNum++) {
+      if (availablePool.isEmpty) break;
 
-      // Onboarding gate (levels 4–15): reward Tier 1, penalize oversized/overcomplex
-      if (levelNumber <= 15) {
-        if (p.tier == MaskComplexityTier.tier1Simple) {
-          score += 200.0;
-        } else if (p.tier == MaskComplexityTier.tier3Detailed) {
-          score -= 500.0;
-        }
-        // Penalize extreme complexity in early levels
-        score -= p.complexityScore * 0.5;
-      } else {
-        // Levels 16+:
-        if (type == LevelType.boss || type == LevelType.god) {
-          if (p.isHeroShape) score += 300.0;
-          if (p.tier == MaskComplexityTier.tier3Detailed) score += 150.0;
-          score += p.complexityScore * 0.3;
-        } else {
-          // Normal levels in mid/late game
-          if (p.tier == MaskComplexityTier.tier2Medium) score += 100.0;
-          if (p.isHeroShape)
-            score -= 80.0; // Save hero shapes for boss/god slots
+      final type = AppConstants.levelTypeFor(levelNum);
+      if (type != LevelType.boss && type != LevelType.god) continue;
+
+      final targetGridSize = AppConstants.gridSizeForLevel(levelNum);
+
+      int bestCandidateIdx = -1;
+      double highestScore = -99999.0;
+
+      for (int i = 0; i < availablePool.length; i++) {
+        final pIdx = availablePool[i];
+        final p = profiles[pIdx];
+
+        // Boss and God levels are on large grids (27..40)
+        // Reject shapes that are way too small (< 20) unless nothing else exists
+        if (p.gridSize < 20 && p.activeCellCount < 180) continue;
+
+        final gridDiff = (p.gridSize - targetGridSize).abs();
+        if (gridDiff > 8)
+          continue; // Must be within reasonable range of Boss grid
+
+        double score = 1000.0 - (gridDiff * 35.0);
+        if (p.isHeroShape) score += 350.0;
+        if (p.tier == MaskComplexityTier.tier3Detailed) score += 200.0;
+        if (p.tier == MaskComplexityTier.tier2Medium) score += 100.0;
+        score += p.complexityScore * 0.4;
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestCandidateIdx = i;
         }
       }
 
-      return score;
+      if (bestCandidateIdx != -1) {
+        final chosenProfileIdx = availablePool.removeAt(bestCandidateIdx);
+        assignments[levelNum - 1] = LevelScheduleAssignment<T>(
+          levelNumber: levelNum,
+          levelType: type,
+          targetGridSize: targetGridSize,
+          customMaskItem: rawItems[chosenProfileIdx],
+          profile: profiles[chosenProfileIdx],
+          isProceduralFallback: false,
+        );
+      }
     }
 
-    // Process levels sequentially
-    for (int levelNum = 1; levelNum <= totalLevels; levelNum++) {
+    // ── PASS 2: Normal Levels Allocation ───────────────────────────────────────
+    // Assign remaining shapes strictly to compatible normal levels
+    for (int levelNum = AppConstants.tutorialLevels + 1;
+        levelNum <= totalLevels;
+        levelNum++) {
+      // Skip if already assigned in Pass 1
+      if (assignments[levelNum - 1] != null) continue;
+      if (availablePool.isEmpty) break;
+
       final type = AppConstants.levelTypeFor(levelNum);
       final targetGridSize = AppConstants.gridSizeForLevel(levelNum);
 
-      // Tutorials 1-3 are immutable
-      if (levelNum <= AppConstants.tutorialLevels) {
-        assignments.add(LevelScheduleAssignment<T>(
-          levelNumber: levelNum,
-          levelType: type,
-          targetGridSize: targetGridSize,
-          isProceduralFallback: true,
-        ));
-        continue;
-      }
-
-      if (pool.isEmpty) {
-        // Pool exhausted: use procedural fallback
-        assignments.add(LevelScheduleAssignment<T>(
-          levelNumber: levelNum,
-          levelType: type,
-          targetGridSize: targetGridSize,
-          isProceduralFallback: true,
-        ));
-        continue;
-      }
-
-      // Find the best fitting candidate from the available pool
-      int bestPoolIndex = -1;
+      int bestCandidateIdx = -1;
       double highestScore = -99999.0;
 
-      for (int i = 0; i < pool.length; i++) {
-        final profileIdx = pool[i];
-        final score =
-            scoreCandidate(profileIdx, levelNum, type, targetGridSize);
+      for (int i = 0; i < availablePool.length; i++) {
+        final pIdx = availablePool[i];
+        final p = profiles[pIdx];
+
+        final gridDiff = (p.gridSize - targetGridSize).abs();
+
+        // STRICT ONBOARDING GATE (Levels 4–15):
+        // Never put oversized (grid > 20) or high-detail Tier 3 shapes in early onboarding
+        if (levelNum <= 15) {
+          if (p.gridSize > 21 || p.tier == MaskComplexityTier.tier3Detailed) {
+            continue; // Strictly reject large shapes for early levels
+          }
+          if (gridDiff > 4) continue;
+        } else {
+          // Levels 16+: allow closer grid match
+          if (gridDiff > 4) continue;
+        }
+
+        double score = 1000.0 - (gridDiff * 45.0);
+        if (levelNum <= 15 && p.tier == MaskComplexityTier.tier1Simple) {
+          score += 200.0;
+        }
+        if (levelNum > 15 && p.tier == MaskComplexityTier.tier2Medium) {
+          score += 150.0;
+        }
+
         if (score > highestScore) {
           highestScore = score;
-          bestPoolIndex = i;
+          bestCandidateIdx = i;
         }
       }
 
-      // If the best candidate is an acceptable fit, assign it
-      if (bestPoolIndex != -1) {
-        final chosenIdx = pool.removeAt(bestPoolIndex);
-        assignments.add(LevelScheduleAssignment<T>(
+      if (bestCandidateIdx != -1) {
+        final chosenProfileIdx = availablePool.removeAt(bestCandidateIdx);
+        assignments[levelNum - 1] = LevelScheduleAssignment<T>(
           levelNumber: levelNum,
           levelType: type,
           targetGridSize: targetGridSize,
-          customMaskItem: rawItems[chosenIdx],
-          profile: profiles[chosenIdx],
+          customMaskItem: rawItems[chosenProfileIdx],
+          profile: profiles[chosenProfileIdx],
           isProceduralFallback: false,
-        ));
+        );
+      }
+    }
+
+    // ── PASS 3: Fill Remaining Slots with Procedural Fallbacks ─────────────────
+    final result = <LevelScheduleAssignment<T>>[];
+    for (int levelNum = 1; levelNum <= totalLevels; levelNum++) {
+      final existing = assignments[levelNum - 1];
+      if (existing != null) {
+        result.add(existing);
       } else {
-        assignments.add(LevelScheduleAssignment<T>(
+        result.add(LevelScheduleAssignment<T>(
           levelNumber: levelNum,
-          levelType: type,
-          targetGridSize: targetGridSize,
+          levelType: AppConstants.levelTypeFor(levelNum),
+          targetGridSize: AppConstants.gridSizeForLevel(levelNum),
           isProceduralFallback: true,
         ));
       }
     }
 
-    return assignments;
+    return result;
   }
 }
