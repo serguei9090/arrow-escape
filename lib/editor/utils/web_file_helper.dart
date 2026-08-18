@@ -85,7 +85,16 @@ class WebFileHelper {
 
     final img = html.ImageElement();
     img.src = dataUrl;
-    await img.onLoad.first;
+    // img.onLoad never fires for a malformed/corrupt PNG - the browser
+    // fires onError instead. Without racing both, a bad file hangs this
+    // await forever (no exception for the caller's try/catch to catch).
+    await Future.any([
+      img.onLoad.first,
+      img.onError.first.then((_) =>
+          throw const FormatException('Image failed to load (malformed or unsupported PNG)')),
+    ]).timeout(const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException(
+            'Image load timed out after 10s', const Duration(seconds: 10)));
 
     final width = img.width ?? 100;
     final height = img.height ?? 100;
