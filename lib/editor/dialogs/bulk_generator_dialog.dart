@@ -101,10 +101,17 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       LevelModel generatedLevel;
       bool Function() isCancelled = () => _cancelRequested;
 
-      // Try custom PNG mask if available for this index
-      if (i <= pngCount) {
+      // Tutorial levels 1-3 are mandatory/hand-authored and must never be
+      // overridden by an uploaded PNG mask (matches png_generator_workspace.dart).
+      // Non-tutorial levels consume uploaded PNGs in order starting from 0,
+      // so uploads aren't silently orphaned by the tutorial skip.
+      final pngIndex = i - AppConstants.tutorialLevels - 1;
+
+      if (i <= AppConstants.tutorialLevels) {
+        generatedLevel = LevelGeneratorV2.generateLevel(i);
+      } else if (pngIndex < pngCount) {
         try {
-          final pngBytes = _uploadedPngMasks[i - 1].bytes;
+          final pngBytes = _uploadedPngMasks[pngIndex].bytes;
           // Use the level's real target grid size, not a hardcoded value -
           // the mask must match the arrows generateLevelWithMask places on it.
           final gridSize = AppConstants.gridSizeForLevel(i);
@@ -116,7 +123,7 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
               levelNumber: i,
               gridSize: gridSize,
               mask: mask,
-              patternName: _uploadedPngMasks[i - 1].name,
+              patternName: _uploadedPngMasks[pngIndex].name,
               isCancelled: isCancelled,
             );
           } else {
