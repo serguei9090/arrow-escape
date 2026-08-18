@@ -555,26 +555,11 @@ class MaskGeneratorV2 {
   /// X cross (two diagonal ellipses crossing at center)
   static Set<String> xCrossMask(int side) {
     final mask = <String>{}; final s = side.toDouble();
-    // Approximate diagonals with two rotated thick rects via polygon
-    final cx = s * 0.5, cy = s * 0.5;
-    final hw = s * 0.14, len = s * 0.64;
-    // Diagonal /
-    _polygon(mask, side, [
-      [cx - len, cy + hw], [cx - len, cy - hw],
-      [cx + len, cy - hw], [cx + len, cy + hw],
-    ]);
-    // Diagonal \  (rotated 90°, same shape)
-    _polygon(mask, side, [
-      [cx - hw, cy - len], [cx + hw, cy - len],
-      [cx + hw, cy + len], [cx - hw, cy + len],
-    ]);
-    // But we need the actual X (rotate ±45°) — approximate with triangles
-    final mask2 = <String>{};
-    _triangle(mask2, side, s*0.00, s*0.13, s*0.13, s*0.00, s*1.00, s*0.87);
-    _triangle(mask2, side, s*0.87, s*1.00, s*1.00, s*0.87, s*0.13, s*0.00);
-    _triangle(mask2, side, s*0.87, s*0.00, s*1.00, s*0.13, s*0.13, s*1.00);
-    _triangle(mask2, side, s*0.00, s*0.87, s*0.13, s*1.00, s*1.00, s*0.13);
-    return _clean(mask2, side);
+    _triangle(mask, side, s*0.00, s*0.13, s*0.13, s*0.00, s*1.00, s*0.87);
+    _triangle(mask, side, s*0.87, s*1.00, s*1.00, s*0.87, s*0.13, s*0.00);
+    _triangle(mask, side, s*0.87, s*0.00, s*1.00, s*0.13, s*0.13, s*1.00);
+    _triangle(mask, side, s*0.00, s*0.87, s*0.13, s*1.00, s*1.00, s*0.13);
+    return _clean(mask, side);
   }
 
   /// Up-pointing arrow (triangle head + narrow rect stem)
@@ -778,18 +763,6 @@ class MaskGeneratorV2 {
     final mask = <String>{}; final s = side.toDouble();
     _ellipse(mask, side, s*0.50, s*0.34, s*0.36, s*0.32);
     _triangle(mask, side, s*0.14, s*0.60, s*0.86, s*0.60, s*0.50, s*0.94);
-    // Remove bottom half of ellipse to make it a scoop (keep above row 0.54)
-    for (int r = 0; r < side; r++) {
-      for (int c = 0; c < side; c++) {
-        final key = '$r,$c';
-        if (mask.contains(key) && (r + 0.5) / s > 0.58 && (r + 0.5) / s < 0.62) {
-          final dx = (c + 0.5) / s - 0.50, dy = (r + 0.5) / s - 0.34;
-          if (dx * dx / (0.36 * 0.36) + dy * dy / (0.32 * 0.32) <= 1.0) {
-            // Keep — this is the overlap zone, cone will cover it
-          }
-        }
-      }
-    }
     return _clean(mask, side);
   }
 
@@ -887,8 +860,6 @@ class MaskGeneratorV2 {
       final p = k.split(',');
       if ((int.parse(p[0]) + 0.5) / s < 0.42) mask.add(k);
     }
-    // Spoke divisions (thin vertical strips removed — not really needed, add a center spoke)
-    _rect(mask, side, s*0.48, s*0.40, s*0.52, s*0.40); // center point, tiny
     // Handle (vertical rect + curved end via ellipse)
     _rect(mask, side, s*0.47, s*0.68, s*0.53, s*0.90);
     _ellipse(mask, side, s*0.40, s*0.90, s*0.10, s*0.06);
