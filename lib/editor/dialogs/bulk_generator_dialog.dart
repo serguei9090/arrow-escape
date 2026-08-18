@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -93,19 +94,26 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
           'Analyzing and profiling ${_uploadedPngMasks.length} custom masks...');
       for (int pIdx = 0; pIdx < _uploadedPngMasks.length; pIdx++) {
         final item = _uploadedPngMasks[pIdx];
+        int initialGrid = 25;
+        final nameLower = item.name.toLowerCase();
+        final match = RegExp(r'(\d+)x(\d+)').firstMatch(nameLower);
+        if (match != null) {
+          initialGrid = int.parse(match.group(1)!).clamp(5, 40);
+        }
         try {
-          final mask = await WebFileHelper.parsePngToGridMask(item.bytes, 25);
+          final mask =
+              await WebFileHelper.parsePngToGridMask(item.bytes, initialGrid);
           profiles.add(MaskComplexityProfile.analyze(
             id: 'bulk_png_$pIdx',
             name: item.name,
-            gridSize: 25,
+            gridSize: initialGrid,
             mask: mask,
           ));
         } catch (_) {
           profiles.add(MaskComplexityProfile.analyze(
             id: 'bulk_png_$pIdx',
             name: item.name,
-            gridSize: 25,
+            gridSize: initialGrid,
             mask: {},
           ));
         }
@@ -140,7 +148,9 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       } else if (assignment.hasCustomMask) {
         try {
           final item = assignment.customMaskItem!;
-          final gridSize = AppConstants.gridSizeForLevel(i);
+          final profileGrid =
+              assignment.profile?.gridSize ?? AppConstants.gridSizeForLevel(i);
+          final gridSize = max(profileGrid, AppConstants.gridSizeForLevel(i));
           final mask =
               await WebFileHelper.parsePngToGridMask(item.bytes, gridSize);
 

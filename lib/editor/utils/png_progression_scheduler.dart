@@ -49,6 +49,22 @@ class MaskComplexityProfile {
     final totalCells = max(1, gridSize * gridSize);
     final density = activeCount / totalCells;
 
+    // Calculate bounding box dimensions of active cells
+    int minR = 999, maxR = -1, minC = 999, maxC = -1;
+    for (final key in mask) {
+      final parts = key.split(',');
+      if (parts.length < 2) continue;
+      final r = int.tryParse(parts[0]) ?? 0;
+      final c = int.tryParse(parts[1]) ?? 0;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (c < minC) minC = c;
+      if (c > maxC) maxC = c;
+    }
+    final bboxW = maxC >= minC ? (maxC - minC + 1) : 0;
+    final bboxH = maxR >= minR ? (maxR - minR + 1) : 0;
+    final effectiveDimension = max(gridSize, max(bboxW, bboxH));
+
     // Calculate perimeter transitions (number of exposed outer & inner edges)
     int perimeterEdges = 0;
     for (final key in mask) {
@@ -81,20 +97,17 @@ class MaskComplexityProfile {
     final complexityScore =
         (activeCount * 0.7) + (perimeterEdges * 0.3) * jaggednessRatio;
 
-    // Determine tier based on grid size and cell count
-    final MaskComplexityTier tier;
-    if (gridSize <= 20 || activeCount <= 180) {
-      tier = MaskComplexityTier.tier1Simple;
-    } else if (gridSize <= 28 || activeCount <= 450) {
-      tier = MaskComplexityTier.tier2Medium;
-    } else {
-      tier = MaskComplexityTier.tier3Detailed;
-    }
-
-    // Hero shape detection by semantic name or high complexity
+    // Hero / Milestone shape detection by name or silhouette characteristics
     final lowerName = name.toLowerCase();
     final isHeroByName = lowerName.contains('boss') ||
         lowerName.contains('god') ||
+        lowerName.contains('dog') ||
+        lowerName.contains('cat') ||
+        lowerName.contains('frog') ||
+        lowerName.contains('fox') ||
+        lowerName.contains('tiger') ||
+        lowerName.contains('panda') ||
+        lowerName.contains('bear') ||
         lowerName.contains('dragon') ||
         lowerName.contains('sword') ||
         lowerName.contains('castle') ||
@@ -104,14 +117,35 @@ class MaskComplexityProfile {
         lowerName.contains('crown') ||
         lowerName.contains('shield') ||
         lowerName.contains('emblem') ||
-        lowerName.contains('star');
+        lowerName.contains('star') ||
+        lowerName.contains('ship') ||
+        lowerName.contains('rocket') ||
+        lowerName.contains('hedgehog') ||
+        lowerName.contains('animal') ||
+        lowerName.contains('bird') ||
+        lowerName.contains('fish') ||
+        lowerName.contains('butterfly');
 
-    final isHeroShape = isHeroByName || complexityScore > 280;
+    // Any pictorial silhouette or large shape is treated as a milestone hero shape
+    final isHeroShape = isHeroByName ||
+        effectiveDimension >= 22 ||
+        (complexityScore > 180 && !lowerName.startsWith('rect_'));
+
+    // Determine tier:
+    // Only small, non-hero shapes qualify for early onboarding Tier 1
+    final MaskComplexityTier tier;
+    if (effectiveDimension <= 18 && !isHeroShape) {
+      tier = MaskComplexityTier.tier1Simple;
+    } else if (effectiveDimension <= 26 && !isHeroShape) {
+      tier = MaskComplexityTier.tier2Medium;
+    } else {
+      tier = MaskComplexityTier.tier3Detailed;
+    }
 
     return MaskComplexityProfile(
       id: id,
       name: name,
-      gridSize: gridSize,
+      gridSize: effectiveDimension,
       mask: mask,
       activeCellCount: activeCount,
       density: density,
@@ -164,8 +198,9 @@ class PngProgressionScheduler {
   ///
   /// Rules:
   /// - Levels 1–3: Mandatory tutorials (always procedural fallback).
-  /// - Levels 4–15: Assigned Tier 1 / lower-complexity shapes matching small grids.
-  /// - Levels 16+: Boss (pos 4) & God (pos 7) milestone slots prioritize Hero & high-complexity shapes.
+  /// - Boss (pos 4) & God (pos 7) milestone slots prioritize Hero & pictorial silhouettes first.
+  /// - Levels 4–15 (Onboarding): Strictly accept only small, simple shapes (Tier 1).
+  /// - Levels 16+: Accept remaining medium/detailed shapes as grid dimensions grow.
   /// - Any level without an assigned custom mask is marked as `isProceduralFallback = true`.
   static List<LevelScheduleAssignment<T>> scheduleProgression<T>({
     required List<T> rawItems,
@@ -179,7 +214,7 @@ class PngProgressionScheduler {
     final availablePool = List<int>.generate(profiles.length, (i) => i);
 
     // ── PASS 1: Priority Milestone Allocation (Boss & God slots) ───────────────
-    // Allocate Hero and high-complexity/large shapes to Boss and God levels first
+    // Assign Hero and pictorial silhouettes to Boss and God levels first
     for (int levelNum = AppConstants.tutorialLevels + 1;
         levelNum <= totalLevels;
         levelNum++) {
@@ -197,16 +232,10 @@ class PngProgressionScheduler {
         final pIdx = availablePool[i];
         final p = profiles[pIdx];
 
-        // Boss and God levels are on large grids (27..40)
-        // Reject shapes that are way too small (< 20) unless nothing else exists
-        if (p.gridSize < 20 && p.activeCellCount < 180) continue;
-
         final gridDiff = (p.gridSize - targetGridSize).abs();
-        if (gridDiff > 8)
-          continue; // Must be within reasonable range of Boss grid
 
-        double score = 1000.0 - (gridDiff * 35.0);
-        if (p.isHeroShape) score += 350.0;
+        double score = 1000.0 - (gridDiff * 25.0);
+        if (p.isHeroShape) score += 400.0;
         if (p.tier == MaskComplexityTier.tier3Detailed) score += 200.0;
         if (p.tier == MaskComplexityTier.tier2Medium) score += 100.0;
         score += p.complexityScore * 0.4;
