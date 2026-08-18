@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'package:arrow_escape/data/level_binary_codec.dart';
 
 /// Round-trip test: generate levels, encode to binary, decode, verify correctness.
@@ -18,7 +18,7 @@ void main() {
     int failed = 0;
 
     for (final n in testLevelNumbers) {
-      final original = LevelGenerator.generateLevel(n);
+      final original = LevelGeneratorV2.generateLevel(n);
 
       // Encode this single level into binary
       final encoded = encodeLevels([original]);

@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'package:arrow_escape/data/level_generator/solver.dart';
 import 'package:arrow_escape/data/models/arrow.dart';
 import 'package:arrow_escape/data/models/level.dart';
@@ -15,7 +15,7 @@ void verifyLevelRange(int start, int end, String logFileName) {
     final sw = Stopwatch()..start();
     
     // 1. Generate the level (exactly ONCE)
-    final level = LevelGenerator.generateLevel(i);
+    final level = LevelGeneratorV2.generateLevel(i);
     expect(level.arrows.isNotEmpty, true, reason: 'Level $i has no arrows');
     expect(level.patternName, isNot('fallback'), reason: 'Level $i fell back to fallback');
 

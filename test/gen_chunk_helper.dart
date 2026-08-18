@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 
 /// Minimum arrow count for a non-tutorial level to be considered valid.
 /// Catches cases where the generator accepted a nearly-empty layout
@@ -94,7 +94,7 @@ void runChunk({
     log('Level $lvl - generating...');
     final lsw = Stopwatch()..start();
     try {
-      final level = LevelGenerator.generateLevel(lvl);
+      final level = LevelGeneratorV2.generateLevel(lvl);
       lsw.stop();
       final ms = lsw.elapsedMilliseconds;
       final t  = ms > 1000

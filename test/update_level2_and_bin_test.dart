@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'package:arrow_escape/data/level_generator/solver.dart';
 import 'package:arrow_escape/data/models/level.dart';
 import 'package:arrow_escape/data/level_binary_codec.dart';
@@ -20,7 +20,7 @@ void main() {
     }
 
     for (int lvlNumber = 1; lvlNumber <= 3; lvlNumber++) {
-      final lvl = LevelGenerator.generateLevel(lvlNumber);
+      final lvl = LevelGeneratorV2.generateLevel(lvlNumber);
       expect(lvl.levelNumber, equals(lvlNumber));
 
       // Verify no 1-dot arrows exist in tutorial levels

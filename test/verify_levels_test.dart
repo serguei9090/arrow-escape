@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'verify_helpers.dart';
 
 void main() {
@@ -13,7 +13,7 @@ void main() {
     int medCount = 0;
 
     for (int i = 160; i <= 220; i++) {
-      final level = LevelGenerator.generateLevel(i);
+      final level = LevelGeneratorV2.generateLevel(i);
       final gs = level.gridSize;
       final vlMin = 5 + (gs ~/ 6);
       final lMin  = 3 + (gs ~/ 10);

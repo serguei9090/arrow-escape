@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 import 'package:arrow_escape/data/level_generator/solver.dart';
 
 void main() {
   test('Test Level 160 Solvability under huge cap', () {
-    final level = LevelGenerator.generateLevel(160);
+    final level = LevelGeneratorV2.generateLevel(160);
     print('Level 160: Grid=' +
         level.gridSize.toString() +
         ', Arrows=' +

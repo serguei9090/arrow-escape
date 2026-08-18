@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arrow_escape/data/level_generator/level_generator.dart';
+import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
 
 void main() {
   test('Trace Level Generation Progress', () {
@@ -10,7 +10,7 @@ void main() {
     for (int i = 1; i <= 50; i++) {
       logFile.appendTextSync('Generating level $i...\n');
       final s = Stopwatch()..start();
-      final level = LevelGenerator.generateLevel(i);
+      final level = LevelGeneratorV2.generateLevel(i);
       s.stop();
       logFile.appendTextSync('Level $i generated in ${s.elapsedMilliseconds} ms. Grid: ${level.gridSize}, Arrows: ${level.arrows.length}, Orphans: ${level.orphanDots.length}\n');
     }
