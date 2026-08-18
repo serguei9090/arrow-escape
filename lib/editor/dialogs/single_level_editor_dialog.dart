@@ -184,8 +184,12 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
   }
 
   void _regenerateArrowsForCurrentMask() {
-    final genLevel =
-        LevelGeneratorV2.generateLevel(widget.initialLevel.levelNumber);
+    final genLevel = LevelGeneratorV2.generateLevelWithMask(
+      levelNumber: widget.initialLevel.levelNumber,
+      gridSize: _gridSize,
+      mask: _mask,
+      patternName: widget.initialLevel.patternName,
+    );
     setState(() {
       _gridSize = genLevel.gridSize.clamp(5, 40);
       _mask = Set.from(genLevel.mask);
@@ -195,6 +199,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
           .toList();
     });
     _runSolverCheck();
+    _flameGameKey.currentState?.resetGame();
   }
 
   @override
@@ -397,10 +402,10 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
 
                         // Step Forward Button
                         IconButton(
-                          onPressed: isSolvable &&
-                                  _currentSolveStepIndex < totalSteps
-                              ? _triggerSingleSolverStep
-                              : null,
+                          onPressed:
+                              isSolvable && _currentSolveStepIndex < totalSteps
+                                  ? _triggerSingleSolverStep
+                                  : null,
                           icon: Icon(
                             LucideIcons.stepForward,
                             color: isSolvable &&
@@ -508,7 +513,9 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                             '• Long-press trajectory path previews\n\n'
                             'Use Play ▶ / Pause ⏸ / Step ⏭ / Reset ↺ in the toolbar to auto-solve with real Flame animations!',
                             style: TextStyle(
-                                color: Colors.white70, fontSize: 13, height: 1.4),
+                                color: Colors.white70,
+                                fontSize: 13,
+                                height: 1.4),
                           ),
                         ],
                       ),

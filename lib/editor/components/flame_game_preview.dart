@@ -34,9 +34,12 @@ class FlameGamePreviewState extends State<FlameGamePreview> {
   @override
   void didUpdateWidget(covariant FlameGamePreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only reset if level number or grid size explicitly changed
-    if (oldWidget.level.levelNumber != widget.level.levelNumber ||
-        oldWidget.level.gridSize != widget.level.gridSize) {
+    // Always reinitialize game whenever arrows, mask, grid, or level number changes
+    if (oldWidget.level != widget.level ||
+        oldWidget.level.arrows != widget.level.arrows ||
+        oldWidget.level.mask != widget.level.mask ||
+        oldWidget.level.gridSize != widget.level.gridSize ||
+        oldWidget.level.levelNumber != widget.level.levelNumber) {
       resetGame();
     }
   }

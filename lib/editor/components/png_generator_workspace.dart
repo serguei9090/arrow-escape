@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/png_mask_model.dart';
+import '../models/editor_state.dart';
 import '../utils/web_file_helper.dart';
 import '../components/interactive_level_canvas.dart';
 import '../../core/constants.dart';
@@ -187,7 +189,8 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     _logBuffer.writeln('──────────────────────────────────────────────');
     _logBuffer.writeln('  PNG & Procedural Level Pack Generator Pipeline');
     _logBuffer.writeln('  Total Target Pack Levels: $_targetTotalLevelCount');
-    _logBuffer.writeln('  Custom PNG Shape Masks Available: ${_pngMasks.length}');
+    _logBuffer
+        .writeln('  Custom PNG Shape Masks Available: ${_pngMasks.length}');
     _logBuffer.writeln('  Mandatory Tutorial Levels (1..3): Immutable');
     _logBuffer.writeln('──────────────────────────────────────────────\n');
 
@@ -253,13 +256,15 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
 
         if (matchIdx != -1) {
           final pMask = remainingPngMasks.removeAt(matchIdx);
-          level = LevelGeneratorV2.generateLevel(targetLevelNum);
           if (pMask.mask.isNotEmpty) {
-            level = level.copyWith(
+            level = LevelGeneratorV2.generateLevelWithMask(
+              levelNumber: targetLevelNum,
               gridSize: pMask.gridSize,
               mask: Set.from(pMask.mask),
               patternName: pMask.filename,
             );
+          } else {
+            level = LevelGeneratorV2.generateLevel(targetLevelNum);
           }
           levelSourceTag = 'PNG Mask ("${pMask.filename}")';
         } else {
@@ -508,7 +513,6 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                           ],
                         ),
                         const Divider(color: Colors.white10, height: 20),
-
                         if (_pngMasks.isEmpty)
                           Expanded(
                             child: Center(
@@ -659,22 +663,60 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                         ],
 
                         if (_generatedLevels.isNotEmpty && !_isGenerating) ...[
-                          ElevatedButton.icon(
-                            onPressed: _exportGeneratedLevelPack,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green.shade700,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    context
+                                        .read<EditorState>()
+                                        .setLevels(_generatedLevels);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Loaded ${_generatedLevels.length} levels into .bin Level Explorer!'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.indigoAccent,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size.fromHeight(44),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: const Icon(LucideIcons.eye, size: 18),
+                                  label: const Text(
+                                    'Load to Explorer',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
                               ),
-                            ),
-                            icon: const Icon(LucideIcons.download, size: 18),
-                            label: Text(
-                              'Download Level Pack (${_generatedLevels.length} .bin)',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _exportGeneratedLevelPack,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade700,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size.fromHeight(44),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: const Icon(LucideIcons.download,
+                                      size: 18),
+                                  label: const Text(
+                                    'Download .bin',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16),
                         ],
@@ -694,9 +736,9 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                               child: Text(
                                 _logBuffer.isEmpty
                                     ? '// Console logs will appear here during generation...\n'
-                                      '// Pack structure:\n'
-                                      '// • L1..L3: Mandatory Tutorials\n'
-                                      '// • L4..L$_targetTotalLevelCount: PNG shape masks + LevelGeneratorV2 procedural fill'
+                                        '// Pack structure:\n'
+                                        '// • L1..L3: Mandatory Tutorials\n'
+                                        '// • L4..L$_targetTotalLevelCount: PNG shape masks + LevelGeneratorV2 procedural fill'
                                     : _logBuffer.toString(),
                                 style: const TextStyle(
                                   fontFamily: 'monospace',
@@ -836,8 +878,8 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                     const Spacer(),
                     Text(
                       '${maskModel.mask.length} cells',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 11),
+                      style:
+                          const TextStyle(color: Colors.white38, fontSize: 11),
                     ),
                   ],
                 ),
