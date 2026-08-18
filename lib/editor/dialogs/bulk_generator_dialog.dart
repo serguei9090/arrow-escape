@@ -157,7 +157,10 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       } else {
         // Yield every level (not just every 10th) so the Stop button's tap
         // actually gets a chance to reach the event loop and set
-        // _cancelRequested before the next level starts.
+        // _cancelRequested before the next level starts. Not using
+        // compute() here - this editor is web-only, and Flutter Web's
+        // compute() doesn't spawn a real isolate (see the longer note in
+        // png_generator_workspace.dart's equivalent yield point).
         await Future.delayed(Duration.zero);
       }
     }

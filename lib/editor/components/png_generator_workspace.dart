@@ -295,6 +295,16 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
           '${isFallback ? ' | ⚠️ FALLBACK (generation exhausted all attempts)' : ''}');
 
       setState(() {});
+      // This editor is web-only (see WebFileHelper's dart:html dependency),
+      // and Flutter Web's compute() does NOT spawn a real background
+      // isolate/worker - it just awaits one microtask then runs the
+      // callback inline on this same thread (see Flutter SDK's
+      // _isolates_web.dart). So wrapping generation in compute() here
+      // would add complexity and break the isCancelled callback (compute
+      // callbacks can't close over local state) for zero real threading
+      // benefit. Yielding every level like this is the actual mitigation
+      // available on this target - it lets the browser process input
+      // (e.g. the Stop button) and repaint between levels.
       await Future.delayed(const Duration(milliseconds: 20));
     }
 
