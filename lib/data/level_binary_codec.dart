@@ -338,8 +338,20 @@ class _ByteWriter {
   }
 
   /// Write a short UTF-8 string (length-prefixed, max 255 bytes).
+  /// Longer input is truncated to fit, at a valid UTF-8 character boundary
+  /// (never splitting a multi-byte sequence) - the 1-byte length prefix
+  /// (writeUint8) would otherwise silently wrap for anything over 255
+  /// bytes while the full string still got written, corrupting every
+  /// field decoded after it.
   void writeString(String s) {
-    final encoded = utf8.encode(s);
+    var encoded = utf8.encode(s);
+    if (encoded.length > 255) {
+      var cut = 255;
+      while (cut > 0 && (encoded[cut] & 0xC0) == 0x80) {
+        cut--;
+      }
+      encoded = encoded.sublist(0, cut);
+    }
     writeUint8(encoded.length);
     _bytes.addAll(encoded);
   }
