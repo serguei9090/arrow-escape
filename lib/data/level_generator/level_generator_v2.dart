@@ -82,7 +82,14 @@ class LevelGeneratorV2 {
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
-  static LevelModel generateLevel(int levelNumber) {
+  ///
+  /// [isCancelled], if given, is polled once per attempt so a caller (e.g.
+  /// an editor "Stop" button) can interrupt generation mid-level instead of
+  /// only between levels — this level's placeholder result is discarded by
+  /// the caller either way once cancelled, so returning quickly is what
+  /// matters.
+  static LevelModel generateLevel(int levelNumber,
+      {bool Function()? isCancelled}) {
     // ── Tutorial levels — hand-authored, straight arrows only ─────────────────
     // ┌─────────────────────────────────────────────────────────────────────────┐
     // │  TUTORIAL RULE: All arrow paths in levels 1–3 are STRAIGHT (no bends). │
@@ -114,7 +121,10 @@ class LevelGeneratorV2 {
     final int maxAttempts =
         isLargeGrid ? (type == LevelType.normal ? 80 : 120) : 80;
 
-    for (int attempt = 0; attempt < maxAttempts && level == null; attempt++) {
+    for (int attempt = 0;
+        attempt < maxAttempts && level == null;
+        attempt++) {
+      if (isCancelled?.call() ?? false) break;
       level = _attempt(
         levelNumber: levelNumber,
         gridSize: gridSize,
@@ -136,6 +146,8 @@ class LevelGeneratorV2 {
   }
 
   /// Generate a level using a custom mask (e.g. from PNG shape masks or single level editor).
+  ///
+  /// [isCancelled] is polled once per attempt (see [generateLevel]).
   static LevelModel generateLevelWithMask({
     required int levelNumber,
     required int gridSize,
@@ -143,6 +155,7 @@ class LevelGeneratorV2 {
     String? patternName,
     LevelType? levelType,
     Random? customRng,
+    bool Function()? isCancelled,
   }) {
     final type = levelType ?? AppConstants.levelTypeFor(levelNumber);
     final seed = levelNumber * 103 + 51;
@@ -154,7 +167,10 @@ class LevelGeneratorV2 {
     final int maxAttempts =
         isLargeGrid ? (type == LevelType.normal ? 100 : 150) : 100;
 
-    for (int attempt = 0; attempt < maxAttempts && level == null; attempt++) {
+    for (int attempt = 0;
+        attempt < maxAttempts && level == null;
+        attempt++) {
+      if (isCancelled?.call() ?? false) break;
       level = _attempt(
         levelNumber: levelNumber,
         gridSize: gridSize,

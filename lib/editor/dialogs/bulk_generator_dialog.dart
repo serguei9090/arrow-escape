@@ -26,6 +26,7 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
   List<NamedBytes> _uploadedPngMasks = [];
 
   bool _isGenerating = false;
+  bool _cancelRequested = false;
   double _progress = 0.0;
   String _logText = '';
   int _generatedCount = 0;
@@ -60,9 +61,18 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
     });
   }
 
+  void _stopBulkGeneration() {
+    if (_isGenerating) {
+      setState(() {
+        _cancelRequested = true;
+      });
+    }
+  }
+
   Future<void> _startBulkGeneration() async {
     setState(() {
       _isGenerating = true;
+      _cancelRequested = false;
       _progress = 0.0;
       _logText = '';
       _generatedCount = 0;
@@ -77,8 +87,19 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
     final pngCount = _uploadedPngMasks.length;
 
     for (int i = 1; i <= _targetLevelCount; i++) {
+      if (_cancelRequested) {
+        _appendLog('\n⚠️ Generation stopped by user at Level #$i.');
+        setState(() {
+          _isGenerating = false;
+          _cancelRequested = false;
+          _generatedLevels = null;
+        });
+        return;
+      }
+
       Difficulty diff = Difficulty.forLevel(i);
       LevelModel generatedLevel;
+      bool Function() isCancelled = () => _cancelRequested;
 
       // Try custom PNG mask if available for this index
       if (i <= pngCount) {
@@ -96,15 +117,19 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
               gridSize: gridSize,
               mask: mask,
               patternName: _uploadedPngMasks[i - 1].name,
+              isCancelled: isCancelled,
             );
           } else {
-            generatedLevel = LevelGeneratorV2.generateLevel(i);
+            generatedLevel =
+                LevelGeneratorV2.generateLevel(i, isCancelled: isCancelled);
           }
         } catch (_) {
-          generatedLevel = LevelGeneratorV2.generateLevel(i);
+          generatedLevel =
+              LevelGeneratorV2.generateLevel(i, isCancelled: isCancelled);
         }
       } else {
-        generatedLevel = LevelGeneratorV2.generateLevel(i);
+        generatedLevel =
+            LevelGeneratorV2.generateLevel(i, isCancelled: isCancelled);
       }
 
       // Solvability check
@@ -128,8 +153,12 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
             'Generated level $i/$_targetLevelCount [${diff.name.toUpperCase()}] - Solvable: $isSolvable'
             '${isFallback ? ' | ⚠️ FALLBACK' : ''}'
             '${!isSolvable ? ' | ⚠️ UNSOLVABLE' : ''}');
-        // Yield to browser UI event loop
         await Future.delayed(const Duration(milliseconds: 5));
+      } else {
+        // Yield every level (not just every 10th) so the Stop button's tap
+        // actually gets a chance to reach the event loop and set
+        // _cancelRequested before the next level starts.
+        await Future.delayed(Duration.zero);
       }
     }
 
@@ -355,21 +384,31 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
                     label: const Text('Download levels.bin'),
                   ),
                 const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: _isGenerating ? null : _startBulkGeneration,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigoAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
+                if (!_isGenerating)
+                  ElevatedButton.icon(
+                    onPressed: _startBulkGeneration,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigoAccent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                    ),
+                    icon: const Icon(LucideIcons.play),
+                    label: const Text('Start Bulk Generation'),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _stopBulkGeneration,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                    ),
+                    icon: const Icon(LucideIcons.square, size: 18),
+                    label: Text(
+                        'Stop & Discard (L#$_generatedCount / $_targetLevelCount)'),
                   ),
-                  icon: Icon(_isGenerating
-                      ? LucideIcons.loader
-                      : LucideIcons.play),
-                  label: Text(_isGenerating
-                      ? 'Generating...'
-                      : 'Start Bulk Generation'),
-                ),
               ],
             ),
           ],

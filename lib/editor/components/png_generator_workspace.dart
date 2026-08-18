@@ -262,14 +262,17 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
               gridSize: pMask.gridSize,
               mask: Set.from(pMask.mask),
               patternName: pMask.filename,
+              isCancelled: () => _cancelRequested,
             );
           } else {
-            level = LevelGeneratorV2.generateLevel(targetLevelNum);
+            level = LevelGeneratorV2.generateLevel(targetLevelNum,
+                isCancelled: () => _cancelRequested);
           }
           levelSourceTag = 'PNG Mask ("${pMask.filename}")';
         } else {
           // Procedural generation fallback via LevelGeneratorV2
-          level = LevelGeneratorV2.generateLevel(targetLevelNum);
+          level = LevelGeneratorV2.generateLevel(targetLevelNum,
+              isCancelled: () => _cancelRequested);
           levelSourceTag = 'Procedural V2';
         }
       }
