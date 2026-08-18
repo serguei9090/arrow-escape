@@ -71,6 +71,15 @@ class LevelGeneratorV2 {
   static final ListQueue<String> _godShapeHistory = ListQueue<String>();
   static const int _shapeHistoryMaxLen = 5;
 
+  // ── Large-grid relief threshold ───────────────────────────────────────────
+  // Levels 213/395/437 are pinned to an oversized grid (see generateLevel's
+  // gridSize override) for pack/art milestone reasons. At that size the
+  // full-density fill + color pairs + direction dots can blow the attempt
+  // budget, so several placement stages ease off once gridSize crosses this
+  // threshold — applies to ANY level that lands on a large grid, not just
+  // those three, so future large levels don't need new hardcoded entries.
+  static const int _largeGridReliefGridSize = 32;
+
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
@@ -390,14 +399,14 @@ class LevelGeneratorV2 {
     // After that it falls back to a density target that decreases on each retry.
     // V2 CHANGE: Phase 2 fill rate is capped per level to avoid 2-cell dominance.
     bool fillEntireGrid = type != LevelType.tutorial && attempt < 12;
-    if (levelNumber == 213 || levelNumber == 395 || levelNumber == 437) {
+    if (gridSize >= _largeGridReliefGridSize) {
       fillEntireGrid = false;
     }
 
     int targetCount = fillEntireGrid ? mask.length : params.arrowCount;
     if (!fillEntireGrid) {
       double fillRate;
-      if (levelNumber == 213 || levelNumber == 395 || levelNumber == 437) {
+      if (gridSize >= _largeGridReliefGridSize) {
         fillRate = 0.55;
       } else {
         fillRate = (1.0 - (attempt - 12) * 0.02).clamp(0.68, 0.95);
@@ -864,7 +873,7 @@ class LevelGeneratorV2 {
       final orphanMap = <int, OrphanDotType>{};
 
       // ── V2 Direction dot color probability ───────────────────────────────────
-      final double colorProb = _colorProbFor(levelNumber, type);
+      final double colorProb = _colorProbFor(levelNumber, type, gridSize);
 
       for (int i = arrows.length - 1; i >= 0; i--) {
         final arrow = arrows[i];
@@ -1092,10 +1101,12 @@ class LevelGeneratorV2 {
   }
 
   // ── V2: Direction dot color probability ──────────────────────────────────
-  static double _colorProbFor(int levelNumber, LevelType type) {
+  static double _colorProbFor(int levelNumber, LevelType type, int gridSize) {
     // STRICT GATE: no direction dots before level 21 (any type)
     if (levelNumber <= 20) return 0.0;
-    if (levelNumber == 395 || levelNumber == 437) return 0.0;
+    // Very large grids need fewer color-changing dots to stay reliably
+    // solvable within the attempt budget (see _largeGridReliefGridSize).
+    if (gridSize >= _largeGridReliefGridSize) return 0.0;
 
     if (type == LevelType.god) {
       if (levelNumber < 35)
@@ -1169,7 +1180,7 @@ class LevelGeneratorV2 {
 
     pairs = pairs.clamp(1, 15); // Max 15 color pairs hard cap
 
-    if (level == 395 || level == 437) pairs = 0;
+    if (gridSize >= _largeGridReliefGridSize) pairs = 0;
     if (pairs == 0) return;
 
     final orphanMap = <String, OrphanDotType>{};
@@ -1801,7 +1812,7 @@ class LevelGeneratorV2 {
       avgLen = 2;
       arrowCount = 4;
     } else {
-      if (level == 395 || level == 437) {
+      if (gridSize >= _largeGridReliefGridSize) {
         avgLen = 6;
       } else if (level <= 15) {
         avgLen = 3;
