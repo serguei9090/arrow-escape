@@ -672,20 +672,7 @@ class LevelGeneratorV2 {
               if (!maskPacked.contains(tr * 1000 + tc)) continue;
               if (occupiedPacked.contains(tr * 1000 + tc)) continue;
 
-              final ArrowDirection dir1, dir2;
-              if (nb[0] == 1) {
-                dir1 = ArrowDirection.up;
-                dir2 = ArrowDirection.down;
-              } else if (nb[0] == -1) {
-                dir1 = ArrowDirection.down;
-                dir2 = ArrowDirection.up;
-              } else if (nb[1] == 1) {
-                dir1 = ArrowDirection.left;
-                dir2 = ArrowDirection.right;
-              } else {
-                dir1 = ArrowDirection.right;
-                dir2 = ArrowDirection.left;
-              }
+              final (dir1, dir2) = _oppositeDirsForOffset(nb);
 
               int headRow, headCol, tailRow, tailCol;
               ArrowDirection chosenDir;
@@ -755,20 +742,7 @@ class LevelGeneratorV2 {
               if (!maskPacked.contains(tr * 1000 + tc)) continue;
               if (occupiedPacked.contains(tr * 1000 + tc)) continue;
 
-              final ArrowDirection dir1, dir2;
-              if (nb[0] == 1) {
-                dir1 = ArrowDirection.up;
-                dir2 = ArrowDirection.down;
-              } else if (nb[0] == -1) {
-                dir1 = ArrowDirection.down;
-                dir2 = ArrowDirection.up;
-              } else if (nb[1] == 1) {
-                dir1 = ArrowDirection.left;
-                dir2 = ArrowDirection.right;
-              } else {
-                dir1 = ArrowDirection.right;
-                dir2 = ArrowDirection.left;
-              }
+              final (dir1, dir2) = _oppositeDirsForOffset(nb);
 
               final tries = rng.nextBool()
                   ? [
@@ -1797,6 +1771,18 @@ class LevelGeneratorV2 {
       nc += d[1];
     }
     return true;
+  }
+
+  /// For a length-2 arrow spanning a cell and its [nb]-offset neighbor,
+  /// returns the two possible opposite exit directions: dir1 exits from
+  /// the origin cell (away from the neighbor), dir2 exits from the
+  /// neighbor cell (away from the origin).
+  static (ArrowDirection, ArrowDirection) _oppositeDirsForOffset(
+      List<int> nb) {
+    if (nb[0] == 1) return (ArrowDirection.up, ArrowDirection.down);
+    if (nb[0] == -1) return (ArrowDirection.down, ArrowDirection.up);
+    if (nb[1] == 1) return (ArrowDirection.left, ArrowDirection.right);
+    return (ArrowDirection.right, ArrowDirection.left);
   }
 
   static OrphanDotType _dotTypeForDir(ArrowDirection dir) {
