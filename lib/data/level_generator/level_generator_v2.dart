@@ -107,7 +107,7 @@ class LevelGeneratorV2 {
 
     final maskShape = _shapeFor(type, rng, levelNumber);
     final mask = MaskGeneratorV2.shapeByName(maskShape.name, gridSize, rng);
-    final params = _paramsFor(levelNumber, type, gridSize, mask);
+    final params = _paramsFor(levelNumber, gridSize, mask);
 
     LevelModel? level;
 
@@ -148,7 +148,7 @@ class LevelGeneratorV2 {
     final type = levelType ?? AppConstants.levelTypeFor(levelNumber);
     final seed = levelNumber * 103 + 51;
     final rng = customRng ?? Random(seed);
-    final params = _paramsFor(levelNumber, type, gridSize, mask);
+    final params = _paramsFor(levelNumber, gridSize, mask);
 
     LevelModel? level;
     final bool isLargeGrid = gridSize > 20;
@@ -1812,8 +1812,7 @@ class LevelGeneratorV2 {
     }
   }
 
-  static _Params _paramsFor(
-      int level, LevelType type, int gridSize, Set<String> mask) {
+  static _Params _paramsFor(int level, int gridSize, Set<String> mask) {
     int avgLen, arrowCount;
     if (level <= 3) {
       avgLen = 2;
