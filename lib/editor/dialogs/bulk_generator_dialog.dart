@@ -8,6 +8,7 @@ import '../../data/level_binary_codec.dart';
 import '../../data/models/level.dart';
 import '../../data/level_generator/level_generator_v2.dart';
 import '../../data/level_generator/solver.dart';
+import '../../core/constants.dart';
 
 class BulkGeneratorDialog extends StatefulWidget {
   const BulkGeneratorDialog({super.key});
@@ -83,22 +84,18 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       if (i <= pngCount) {
         try {
           final pngBytes = _uploadedPngMasks[i - 1].bytes;
-          const gridSize = 8;
+          // Use the level's real target grid size, not a hardcoded value -
+          // the mask must match the arrows generateLevelWithMask places on it.
+          final gridSize = AppConstants.gridSizeForLevel(i);
           final mask =
               await WebFileHelper.parsePngToGridMask(pngBytes, gridSize);
 
           if (mask.isNotEmpty) {
-            final baseGen = LevelGeneratorV2.generateLevel(i);
-            generatedLevel = LevelModel(
+            generatedLevel = LevelGeneratorV2.generateLevelWithMask(
               levelNumber: i,
               gridSize: gridSize,
-              arrows: baseGen.arrows,
-              patternName: _uploadedPngMasks[i - 1].name,
-              difficulty: diff,
-              solutionOrder: baseGen.solutionOrder,
-              maskShape: MaskShape.square,
               mask: mask,
-              orphanDots: baseGen.orphanDots,
+              patternName: _uploadedPngMasks[i - 1].name,
             );
           } else {
             generatedLevel = LevelGeneratorV2.generateLevel(i);
@@ -111,10 +108,13 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       }
 
       // Solvability check
-      final isSolvable = LevelSolver.solve(generatedLevel) != null;
+      final sol = LevelSolver.solve(generatedLevel);
+      final isSolvable = sol != null;
       if (isSolvable) {
         _solvableCount++;
+        generatedLevel = generatedLevel.copyWith(solutionOrder: sol);
       }
+      final isFallback = generatedLevel.patternName.startsWith('fallback');
 
       levels.add(generatedLevel);
       _generatedCount++;
@@ -125,7 +125,9 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
           _progress = curProgress;
         });
         _appendLog(
-            'Generated level $i/$_targetLevelCount [${diff.name.toUpperCase()}] - Solvable: $isSolvable');
+            'Generated level $i/$_targetLevelCount [${diff.name.toUpperCase()}] - Solvable: $isSolvable'
+            '${isFallback ? ' | ⚠️ FALLBACK' : ''}'
+            '${!isSolvable ? ' | ⚠️ UNSOLVABLE' : ''}');
         // Yield to browser UI event loop
         await Future.delayed(const Duration(milliseconds: 5));
       }
