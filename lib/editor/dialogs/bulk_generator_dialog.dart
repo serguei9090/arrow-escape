@@ -185,7 +185,7 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
     });
 
     if (mounted) {
-      context.read<EditorState>().setLevels(levels);
+      context.read<EditorState>().setLevels(levels, alreadyVerified: true);
     }
   }
 

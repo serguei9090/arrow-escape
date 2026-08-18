@@ -685,9 +685,9 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                               Expanded(
                                 child: ElevatedButton.icon(
                                   onPressed: () {
-                                    context
-                                        .read<EditorState>()
-                                        .setLevels(_generatedLevels);
+                                    context.read<EditorState>().setLevels(
+                                        _generatedLevels,
+                                        alreadyVerified: true);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(

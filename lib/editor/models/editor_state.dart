@@ -39,11 +39,19 @@ class EditorState extends ChangeNotifier {
   int get bulkGeneratedCount => _bulkGeneratedCount;
   int get bulkSolvableCount => _bulkSolvableCount;
 
-  void setLevels(List<LevelModel> newLevels) {
+  /// [alreadyVerified] should be true only when [newLevels] just came
+  /// straight out of this session's own generator (bulk/PNG generation
+  /// dialogs) - solved and cached there already, so re-solving here would
+  /// be redundant. Any other source (a loaded .bin file - hand-edited,
+  /// from an older/different generator build, or corrupted) must NOT set
+  /// this: its stored solutionOrder is an unverified claim from the file,
+  /// not proof, and the gallery's Unsolvable filter exists specifically to
+  /// catch a mismatch between it and the level's actual current arrows.
+  void setLevels(List<LevelModel> newLevels, {bool alreadyVerified = false}) {
     _levels = List.from(newLevels);
     _selectedLevelIndex = _levels.isNotEmpty ? 0 : null;
     _solvabilityCache.clear();
-    _reanalyzeSolvability();
+    _reanalyzeSolvability(trustStoredSolutions: alreadyVerified);
     notifyListeners();
   }
 
@@ -121,7 +129,11 @@ class EditorState extends ChangeNotifier {
       }
     }
     _solvabilityCache.clear();
-    _reanalyzeSolvability();
+    // Only renumbers already-loaded levels (add/duplicate/delete) - arrows
+    // are untouched, so trusting each level's own already-analyzed
+    // solutionOrder here isn't a new external-trust gap, just avoiding a
+    // redundant re-solve of the whole pack on every add/duplicate/delete.
+    _reanalyzeSolvability(trustStoredSolutions: true);
   }
 
   void setSearchQuery(String query) {
@@ -148,20 +160,24 @@ class EditorState extends ChangeNotifier {
     return res;
   }
 
-  void _reanalyzeSolvability() {
+  /// [trustStoredSolutions] must only be true when every level in _levels
+  /// is known to already carry a solver-verified solutionOrder from this
+  /// session (see setLevels' doc) - it is NOT a general "looks plausible"
+  /// heuristic. When false (the default, and always for externally-loaded
+  /// packs), every level is independently re-solved regardless of what its
+  /// stored solutionOrder claims.
+  void _reanalyzeSolvability({bool trustStoredSolutions = false}) {
     _isAnalyzingAll = true;
     for (final lvl in _levels) {
-      // A non-empty solutionOrder means the generator (or the single-level
-      // editor's own solver check) already verified this exact level is
-      // solvable - trust it instead of re-running the DFS solver on every
-      // level in the pack synchronously on the UI thread. Exception:
-      // fallback levels carry a naive, never solver-verified guessed
-      // order (see LevelGeneratorV2._fallback), so always actually solve
-      // those - they're trivially small, so it's cheap either way.
-      final trustStoredSolution = lvl.solutionOrder.isNotEmpty &&
+      // Even when trusting the pack overall, fallback levels carry a
+      // naive, never solver-verified guessed order (see
+      // LevelGeneratorV2._fallback) - always actually solve those. They're
+      // trivially small, so it's cheap either way.
+      final trustThisLevel = trustStoredSolutions &&
+          lvl.solutionOrder.isNotEmpty &&
           !lvl.patternName.startsWith('fallback');
       _solvabilityCache[lvl.levelNumber] =
-          trustStoredSolution || LevelSolver.solve(lvl) != null;
+          trustThisLevel || LevelSolver.solve(lvl) != null;
     }
     _isAnalyzingAll = false;
   }
