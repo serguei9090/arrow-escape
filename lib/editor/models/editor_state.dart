@@ -151,7 +151,17 @@ class EditorState extends ChangeNotifier {
   void _reanalyzeSolvability() {
     _isAnalyzingAll = true;
     for (final lvl in _levels) {
-      _solvabilityCache[lvl.levelNumber] = LevelSolver.solve(lvl) != null;
+      // A non-empty solutionOrder means the generator (or the single-level
+      // editor's own solver check) already verified this exact level is
+      // solvable - trust it instead of re-running the DFS solver on every
+      // level in the pack synchronously on the UI thread. Exception:
+      // fallback levels carry a naive, never solver-verified guessed
+      // order (see LevelGeneratorV2._fallback), so always actually solve
+      // those - they're trivially small, so it's cheap either way.
+      final trustStoredSolution = lvl.solutionOrder.isNotEmpty &&
+          !lvl.patternName.startsWith('fallback');
+      _solvabilityCache[lvl.levelNumber] =
+          trustStoredSolution || LevelSolver.solve(lvl) != null;
     }
     _isAnalyzingAll = false;
   }
