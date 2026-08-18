@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:collection/collection.dart';
 
 // ─── Direction Enum ───────────────────────────────────────────────────────────
 
@@ -183,4 +184,25 @@ class ArrowModel {
   String toString() => 'Arrow($id @ [$row,$col] ${direction.symbol} '
       '[${mechanic.name}${colorGroup != null ? ' grp$colorGroup' : ''}], '
       'path: $path)';
+
+  static const _pathEquality = DeepCollectionEquality();
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ArrowModel &&
+        id == other.id &&
+        row == other.row &&
+        col == other.col &&
+        direction == other.direction &&
+        state == other.state &&
+        isPartOfPattern == other.isPartOfPattern &&
+        mechanic == other.mechanic &&
+        colorGroup == other.colorGroup &&
+        _pathEquality.equals(path, other.path);
+  }
+
+  @override
+  int get hashCode => Object.hash(id, row, col, direction, state,
+      isPartOfPattern, mechanic, colorGroup, _pathEquality.hash(path));
 }

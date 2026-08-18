@@ -34,12 +34,11 @@ class FlameGamePreviewState extends State<FlameGamePreview> {
   @override
   void didUpdateWidget(covariant FlameGamePreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Always reinitialize game whenever arrows, mask, grid, or level number changes
-    if (oldWidget.level != widget.level ||
-        oldWidget.level.arrows != widget.level.arrows ||
-        oldWidget.level.mask != widget.level.mask ||
-        oldWidget.level.gridSize != widget.level.gridSize ||
-        oldWidget.level.levelNumber != widget.level.levelNumber) {
+    // LevelModel has value equality (see LevelModel.==), so this only
+    // triggers when the level's actual content changed - not merely
+    // because the parent rebuilt a new-but-identical LevelModel instance
+    // (e.g. after a solve-step animation's setState).
+    if (oldWidget.level != widget.level) {
       resetGame();
     }
   }

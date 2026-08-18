@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'arrow.dart';
 
 // ─── Orphan Dot ───────────────────────────────────────────────────────────────
@@ -25,6 +26,17 @@ class OrphanDot {
     col: json['col'] as int,
     type: OrphanDotType.values[json['type'] as int],
   );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OrphanDot &&
+          row == other.row &&
+          col == other.col &&
+          type == other.type);
+
+  @override
+  int get hashCode => Object.hash(row, col, type);
 }
 
 // ─── Mask Shape Enum ──────────────────────────────────────────────────────────
@@ -231,6 +243,43 @@ class LevelModel {
             .toList()
         : const [],
   );
+
+  static const _arrowListEquality = ListEquality<ArrowModel>();
+  static const _stringListEquality = ListEquality<String>();
+  static const _stringSetEquality = SetEquality<String>();
+  static const _orphanListEquality = ListEquality<OrphanDot>();
+
+  /// Value equality over all fields - two levels with identical content
+  /// (even as separate rebuilt instances) compare equal. Used so widgets
+  /// like FlameGamePreview can tell "level rebuilt with same content" apart
+  /// from "level actually changed" instead of relying on reference identity.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is LevelModel &&
+        levelNumber == other.levelNumber &&
+        gridSize == other.gridSize &&
+        patternName == other.patternName &&
+        difficulty == other.difficulty &&
+        maskShape == other.maskShape &&
+        _arrowListEquality.equals(arrows, other.arrows) &&
+        _stringListEquality.equals(solutionOrder, other.solutionOrder) &&
+        _stringSetEquality.equals(mask, other.mask) &&
+        _orphanListEquality.equals(orphanDots, other.orphanDots);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        levelNumber,
+        gridSize,
+        patternName,
+        difficulty,
+        maskShape,
+        _arrowListEquality.hash(arrows),
+        _stringListEquality.hash(solutionOrder),
+        _stringSetEquality.hash(mask),
+        _orphanListEquality.hash(orphanDots),
+      );
 }
 
 // ─── Level Result Model ───────────────────────────────────────────────────────
