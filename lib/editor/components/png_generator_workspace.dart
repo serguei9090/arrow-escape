@@ -44,14 +44,64 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
           'grid': 15
         },
         {
+          'path': 'assets/PNG_Levels/15x15/key.png',
+          'name': '15x15_key.png',
+          'grid': 15
+        },
+        {
+          'path': 'assets/PNG_Levels/15x15/heart.png',
+          'name': '15x15_heart.png',
+          'grid': 15
+        },
+        {
+          'path': 'assets/PNG_Levels/15x15/cup.png',
+          'name': '15x15_cup.png',
+          'grid': 15
+        },
+        {
           'path': 'assets/PNG_Levels/25x25/ship.png',
           'name': '25x25_ship.png',
+          'grid': 25
+        },
+        {
+          'path': 'assets/PNG_Levels/25x25/sword.png',
+          'name': '25x25_sword.png',
+          'grid': 25
+        },
+        {
+          'path': 'assets/PNG_Levels/25x25/anchor.png',
+          'name': '25x25_anchor.png',
+          'grid': 25
+        },
+        {
+          'path': 'assets/PNG_Levels/25x25/cat.png',
+          'name': '25x25_cat.png',
           'grid': 25
         },
         {
           'path': 'assets/PNG_Levels/30x30/dog.png',
           'name': '30x30_dog.png',
           'grid': 30
+        },
+        {
+          'path': 'assets/PNG_Levels/30x30/rocket.png',
+          'name': '30x30_rocket.png',
+          'grid': 30
+        },
+        {
+          'path': 'assets/PNG_Levels/30x30/castle.png',
+          'name': '30x30_castle.png',
+          'grid': 30
+        },
+        {
+          'path': 'assets/PNG_Levels/30x30/crown.png',
+          'name': '30x30_crown.png',
+          'grid': 30
+        },
+        {
+          'path': 'assets/PNG_Levels/40x40/dragon.png',
+          'name': '40x40_dragon.png',
+          'grid': 40
         },
       ];
 
@@ -84,7 +134,7 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Successfully loaded $addedCount sample PNG masks (House 15x15, Ship 25x25, Dog 30x30)!'),
+                'Successfully loaded $addedCount curated sample PNG shape masks!'),
             backgroundColor: Colors.green,
           ),
         );
