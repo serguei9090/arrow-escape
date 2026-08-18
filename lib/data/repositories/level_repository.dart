@@ -172,7 +172,19 @@ class LevelRepository {
     if (!_generating.contains(levelNumber)) {
       unawaited(preGenerateAsync(levelNumber));
     }
+    // preGenerateAsync swallows its own exceptions (compute() spawn
+    // failure, serialization issue, etc.) without populating the cache -
+    // without a cap this loop would then poll forever. Fall back to
+    // generating synchronously on this isolate if the background attempt
+    // hasn't landed within a generous timeout.
+    const maxWait = Duration(seconds: 5);
+    final deadline = DateTime.now().add(maxWait);
     while (!_cache.containsKey(levelNumber)) {
+      if (DateTime.now().isAfter(deadline)) {
+        final level = LevelGeneratorV2.generateLevel(levelNumber);
+        _cache[levelNumber] = level;
+        break;
+      }
       await Future.delayed(const Duration(milliseconds: 16));
     }
     return _cache[levelNumber]!;
