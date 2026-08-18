@@ -197,6 +197,11 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
       _orphanDots = genLevel.orphanDots
           .map((od) => OrphanDot(row: od.row, col: od.col, type: od.type))
           .toList();
+      // Carry over a 'fallback: '/'orphan-relief: ' marker the generator
+      // may have attached - dropping it here would silently hide a
+      // degenerate/imperfect regeneration from downstream tooling that
+      // detects those markers (bulk export logs, solvability trust gate).
+      _patternName = genLevel.patternName;
     });
     _runSolverCheck();
     _flameGameKey.currentState?.resetGame();
