@@ -9,7 +9,8 @@ class InteractiveLevelCanvas extends StatelessWidget {
   final String? selectedArrowId;
   final String? selectedCell; // 'r,c'
   final List<String>? solverStepHighlight; // list of arrow IDs cleared in order
-  final Set<String>? clearedArrowIds; // set of arrow IDs cleared during interactive playtest
+  final Set<String>?
+      clearedArrowIds; // set of arrow IDs cleared during interactive playtest
   final int currentSolverStep;
   final Function(int row, int col)? onCellTap;
   final Function(ArrowModel arrow)? onArrowTap;
@@ -191,7 +192,9 @@ class InteractiveLevelCanvas extends StatelessWidget {
                                 _getDirectionIcon(arrow.direction),
                                 color: isNextToClear
                                     ? Colors.black
-                                    : (arrow.colorGroup == null ? Colors.white : Colors.black87),
+                                    : (arrow.colorGroup == null
+                                        ? Colors.white
+                                        : Colors.black87),
                                 size: cellSize * 0.55,
                               ),
 
@@ -249,6 +252,8 @@ class LevelThumbnailCanvas extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: CustomPaint(
+              key: ValueKey(
+                  'thumb_${level.levelNumber}_${level.gridSize}_${level.arrows.length}_${level.mask.length}_${level.patternName}'),
               painter: _ThumbnailPainter(level: level),
             ),
           ),
@@ -319,7 +324,8 @@ class _ThumbnailPainter extends CustomPainter {
     // 2. Draw Snake Paths
     for (final arrow in level.arrows) {
       if (arrow.path.length <= 1) continue;
-      final pathColor = _getColorGroupColor(arrow.colorGroup).withValues(alpha: 0.7);
+      final pathColor =
+          _getColorGroupColor(arrow.colorGroup).withValues(alpha: 0.7);
       final linePaint = Paint()
         ..color = pathColor
         ..strokeWidth = max(1.5, cellW * 0.15)
@@ -362,14 +368,21 @@ class _ThumbnailPainter extends CustomPainter {
         ..strokeWidth = max(1.2, radius * 0.3)
         ..strokeCap = StrokeCap.round;
 
-      final startPoint = Offset(cx - delta[1] * radius * 0.4, cy - delta[0] * radius * 0.4);
-      final endPoint = Offset(cx + delta[1] * radius * 0.5, cy + delta[0] * radius * 0.5);
+      final startPoint =
+          Offset(cx - delta[1] * radius * 0.4, cy - delta[0] * radius * 0.4);
+      final endPoint =
+          Offset(cx + delta[1] * radius * 0.5, cy + delta[0] * radius * 0.5);
       canvas.drawLine(startPoint, endPoint, arrowLine);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _ThumbnailPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ThumbnailPainter oldDelegate) {
+    return oldDelegate.level != level ||
+        oldDelegate.level.arrows.length != level.arrows.length ||
+        oldDelegate.level.mask.length != level.mask.length ||
+        oldDelegate.level.patternName != level.patternName;
+  }
 }
 
 class _SnakePathPainter extends CustomPainter {
