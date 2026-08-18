@@ -242,9 +242,12 @@ class LevelGeneratorV2 {
     // Note: _attempt() already verifies solvability internally and stamps
     // solutionOrder before returning — no need to re-solve here.
     var result = level ?? _fallback(levelNumber, gridSize, mask, type);
-    if (level != null &&
-        bestOrphanCount > 0 &&
-        result.patternName != 'fallback') {
+    // result is level here whenever this fires (level != null short-
+    // circuits the ?? above), and a successful _attempt()'s patternName
+    // can never literally be 'fallback' (only _fallback() produces that
+    // exact string) - so no separate check is needed to avoid
+    // double-tagging a fallback level as 'orphan-relief: fallback'.
+    if (level != null && bestOrphanCount > 0) {
       result = result.copyWith(patternName: 'orphan-relief: ${result.patternName}');
     }
     _warnIfFallback(result, levelNumber, maxAttempts);
