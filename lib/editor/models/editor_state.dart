@@ -2,13 +2,6 @@ import 'package:flutter/foundation.dart';
 import '../../data/models/level.dart';
 import '../../data/level_generator/solver.dart';
 
-class SolveResult {
-  final bool isSolvable;
-  final List<String> solutionOrder;
-
-  SolveResult({required this.isSolvable, required this.solutionOrder});
-}
-
 class EditorState extends ChangeNotifier {
   List<LevelModel> _levels = [];
   int? _selectedLevelIndex;
