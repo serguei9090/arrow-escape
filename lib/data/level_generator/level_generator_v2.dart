@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import '../models/arrow.dart';
 import '../models/level.dart';
 import '../../core/constants.dart';
@@ -128,7 +129,9 @@ class LevelGeneratorV2 {
       }
     }
 
-    return level ?? _fallback(levelNumber, gridSize, mask, type);
+    final result = level ?? _fallback(levelNumber, gridSize, mask, type);
+    _warnIfFallback(result, levelNumber, maxAttempts);
+    return result;
   }
 
   /// Generate a level using a custom mask (e.g. from PNG shape masks or single level editor).
@@ -171,10 +174,29 @@ class LevelGeneratorV2 {
     }
 
     final result = level ?? _fallback(levelNumber, gridSize, mask, type);
+    _warnIfFallback(result, levelNumber, maxAttempts);
     if (patternName != null && patternName.isNotEmpty) {
-      return result.copyWith(patternName: patternName);
+      // Preserve the fallback marker even when the caller renames the pattern,
+      // so downstream tooling can still detect a degenerate level.
+      final taggedName = result.patternName == 'fallback'
+          ? 'fallback: $patternName'
+          : patternName;
+      return result.copyWith(patternName: taggedName);
     }
     return result;
+  }
+
+  /// Surfaces a visible warning whenever generation exhausted every attempt
+  /// and fell back to the degenerate placeholder level (see [_fallback]).
+  /// Callers (editor UI) can also detect this via `patternName` starting
+  /// with 'fallback'.
+  static void _warnIfFallback(LevelModel result, int levelNumber, int maxAttempts) {
+    if (result.patternName == 'fallback' || result.patternName.startsWith('fallback:')) {
+      debugPrint(
+          '⚠️ LevelGeneratorV2: Level $levelNumber exhausted all $maxAttempts attempts — '
+          'shipped degenerate FALLBACK level instead of a real puzzle.');
+      _log('Level $levelNumber: FALLBACK used after $maxAttempts attempts.\n');
+    }
   }
 
   // ── Tutorial level builders ──────────────────────────────────────────────────

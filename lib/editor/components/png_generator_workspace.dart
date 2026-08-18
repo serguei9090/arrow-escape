@@ -286,8 +286,10 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
       _generatedCount++;
       _generationProgress = targetLevelNum / _targetTotalLevelCount;
 
+      final isFallback = level.patternName.startsWith('fallback');
       _logBuffer.writeln(
-          'L#$targetLevelNum [$levelSourceTag] | ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | ${level.gridSize}x${level.gridSize}');
+          'L#$targetLevelNum [$levelSourceTag] | ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | ${level.gridSize}x${level.gridSize}'
+          '${isFallback ? ' | ⚠️ FALLBACK (generation exhausted all attempts)' : ''}');
 
       setState(() {});
       await Future.delayed(const Duration(milliseconds: 20));
