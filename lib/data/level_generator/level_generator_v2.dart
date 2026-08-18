@@ -79,6 +79,14 @@ class LevelGeneratorV2 {
   // those three, so future large levels don't need new hardcoded entries.
   static const int _largeGridReliefGridSize = 32;
 
+  /// True when fill/color/pair generation should ease off for this level's
+  /// grid size (see [_largeGridReliefGridSize]) — except level 213, which
+  /// shipped with full density despite gridSize 32 back when only 395/437
+  /// were special-cased by levelNumber, and keeps that original profile so
+  /// regenerating the pack doesn't silently change already-shipped content.
+  static bool _easesForLargeGrid(int levelNumber, int gridSize) =>
+      gridSize >= _largeGridReliefGridSize && levelNumber != 213;
+
   // ── Entry point ─────────────────────────────────────────────────────────────
 
   /// Generate a level. Seeded by levelNumber for determinism.
@@ -473,14 +481,14 @@ class LevelGeneratorV2 {
     // After that it falls back to a density target that decreases on each retry.
     // V2 CHANGE: Phase 2 fill rate is capped per level to avoid 2-cell dominance.
     bool fillEntireGrid = type != LevelType.tutorial && attempt < 12;
-    if (gridSize >= _largeGridReliefGridSize) {
+    if (_easesForLargeGrid(levelNumber, gridSize)) {
       fillEntireGrid = false;
     }
 
     int targetCount = fillEntireGrid ? mask.length : params.arrowCount;
     if (!fillEntireGrid) {
       double fillRate;
-      if (gridSize >= _largeGridReliefGridSize) {
+      if (_easesForLargeGrid(levelNumber, gridSize)) {
         fillRate = 0.55;
       } else {
         fillRate = (1.0 - (attempt - 12) * 0.02).clamp(0.68, 0.95);
@@ -1236,7 +1244,7 @@ class LevelGeneratorV2 {
     if (levelNumber <= 20) return 0.0;
     // Very large grids need fewer color-changing dots to stay reliably
     // solvable within the attempt budget (see _largeGridReliefGridSize).
-    if (gridSize >= _largeGridReliefGridSize) return 0.0;
+    if (_easesForLargeGrid(levelNumber, gridSize)) return 0.0;
 
     if (type == LevelType.god) {
       if (levelNumber < 35)
@@ -1310,7 +1318,7 @@ class LevelGeneratorV2 {
 
     pairs = pairs.clamp(1, 15); // Max 15 color pairs hard cap
 
-    if (gridSize >= _largeGridReliefGridSize) pairs = 0;
+    if (_easesForLargeGrid(level, gridSize)) pairs = 0;
     if (pairs == 0) return;
 
     final orphanMap = <String, OrphanDotType>{};
@@ -1970,7 +1978,7 @@ class LevelGeneratorV2 {
       avgLen = 2;
       arrowCount = 4;
     } else {
-      if (gridSize >= _largeGridReliefGridSize) {
+      if (_easesForLargeGrid(level, gridSize)) {
         avgLen = 6;
       } else if (level <= 15) {
         avgLen = 3;
