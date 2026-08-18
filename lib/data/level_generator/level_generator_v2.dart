@@ -1,6 +1,5 @@
 import 'dart:collection';
 import 'dart:math';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/arrow.dart';
@@ -2120,10 +2119,7 @@ class LevelGeneratorV2 {
   }
 
   static void _log(String msg) {
-    try {
-      File('attempt_log_v2.txt')
-          .writeAsStringSync(msg, mode: FileMode.append, flush: true);
-    } catch (_) {}
+    if (kDebugMode) debugPrint('[LevelGeneratorV2] $msg');
   }
 }
 
