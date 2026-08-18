@@ -875,21 +875,31 @@ class LevelGeneratorV2 {
       // once other arrows clear first. Runs on every attempt (not just
       // early ones) since it can only reduce the orphan-dot count, never
       // hurt - and PNG-mask levels want as few leftover cells as possible.
-      {
+      // Skipped on grids that already get large-grid relief elsewhere
+      // (fill density, color pairs, direction dots) - this is the same
+      // performance/quality tradeoff applied consistently, and it's
+      // exactly the grid size where an O(mask.length)-per-repair pass
+      // would be least affordable.
+      if (gridSize < _largeGridReliefGridSize) {
+        // Tracked incrementally (not rebuilt from maskCells every
+        // iteration) - a single successful repair only removes the two
+        // cells it consumed, so there's no need to rescan the whole mask.
+        final remainingEmptyPacked = <int>{};
+        for (final cell in maskCells) {
+          final p = cell[0] * 1000 + cell[1];
+          if (!occupiedPacked.contains(p)) remainingEmptyPacked.add(p);
+        }
+
         bool repaired = true;
         int repairGuard = 0;
         while (repaired && repairGuard < maskCells.length) {
           repaired = false;
           repairGuard++;
-          final remainingEmpty = maskCells
-              .where((c) => !occupiedPacked.contains(c[0] * 1000 + c[1]))
-              .toList();
-          final remPacked =
-              remainingEmpty.map((c) => c[0] * 1000 + c[1]).toSet();
 
           outer:
-          for (final cell in remainingEmpty) {
-            final r = cell[0], c = cell[1];
+          for (final packed in remainingEmptyPacked.toList()) {
+            if (!remainingEmptyPacked.contains(packed)) continue;
+            final r = packed ~/ 1000, c = packed % 1000;
             for (final nb in [
               [-1, 0],
               [1, 0],
@@ -897,7 +907,8 @@ class LevelGeneratorV2 {
               [0, 1]
             ]) {
               final tr = r + nb[0], tc = c + nb[1];
-              if (!remPacked.contains(tr * 1000 + tc)) continue;
+              final tPacked = tr * 1000 + tc;
+              if (!remainingEmptyPacked.contains(tPacked)) continue;
 
               final (dir1, dir2) = _oppositeDirsForOffset(nb);
               final candidates = [
@@ -931,6 +942,8 @@ class LevelGeneratorV2 {
                 }
               }
               if (placed) {
+                remainingEmptyPacked.remove(packed);
+                remainingEmptyPacked.remove(tPacked);
                 repaired = true;
                 break outer;
               }
