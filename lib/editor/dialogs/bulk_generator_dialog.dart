@@ -83,7 +83,7 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
       if (i <= pngCount) {
         try {
           final pngBytes = _uploadedPngMasks[i - 1].bytes;
-          final gridSize = 8;
+          const gridSize = 8;
           final mask =
               await WebFileHelper.parsePngToGridMask(pngBytes, gridSize);
 

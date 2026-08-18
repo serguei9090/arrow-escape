@@ -473,9 +473,9 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.white10),
                       ),
-                      child: Column(
+                      child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Row(
                             children: [
                               Text(

@@ -45,10 +45,10 @@ class WebHeaderNav extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Column(
+              const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     'ARROW ESCAPE',
                     style: TextStyle(
