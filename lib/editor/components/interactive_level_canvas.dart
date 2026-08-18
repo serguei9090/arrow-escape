@@ -280,17 +280,39 @@ class _ThumbnailPainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.05)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
+    final emptyDotPaint = Paint()..color = Colors.white.withValues(alpha: 0.22);
+
+    // A mask cell not covered by any arrow's path is a leftover gap
+    // (orphan dot or, rarely, a truly uncovered cell) - the real game
+    // renders these as a visible faint dot rather than solid fill, so the
+    // thumbnail must match that or it misrepresents how "complete" the
+    // level actually looks compared to the real in-game/editor rendering.
+    final occupiedCells = <String>{};
+    for (final arrow in level.arrows) {
+      for (final pt in arrow.path) {
+        occupiedCells.add('${pt[0]},${pt[1]}');
+      }
+    }
 
     // 1. Draw Grid Cells
     for (int r = 0; r < gs; r++) {
       for (int c = 0; c < gs; c++) {
+        final key = '$r,$c';
         final rect = RRect.fromRectAndRadius(
           Rect.fromLTWH(c * cellW + 0.5, r * cellH + 0.5, cellW - 1, cellH - 1),
           const Radius.circular(2),
         );
-        final isActive = level.mask.contains('$r,$c');
+        final isActive = level.mask.contains(key);
         canvas.drawRRect(rect, isActive ? cellPaintActive : cellPaintBg);
         canvas.drawRRect(rect, cellBorder);
+
+        if (isActive && !occupiedCells.contains(key)) {
+          canvas.drawCircle(
+            Offset((c + 0.5) * cellW, (r + 0.5) * cellH),
+            max(1.0, min(cellW, cellH) * 0.08),
+            emptyDotPaint,
+          );
+        }
       }
     }
 
