@@ -606,7 +606,6 @@ class LevelGeneratorV2 {
 
           if (path != null && path.length >= minAcceptableLen) {
             final blockedCount = _evalPlacement(
-              maskCells: maskCells,
               maskPacked: maskPacked,
               currentOccupiedPacked: occupiedPacked,
               newPath: path,
@@ -634,7 +633,6 @@ class LevelGeneratorV2 {
             curVeryLongMin: curVeryLongMin,
             curVeryLongMax: curVeryLongMax,
             curLongMin: curLongMin,
-            maskCells: maskCells,
             maskPacked: maskPacked,
             occupiedPacked: occupiedPacked,
             gridSize: gridSize,
@@ -700,7 +698,6 @@ class LevelGeneratorV2 {
             );
             if (path != null && path.length == 2) {
               final bc = _evalPlacement(
-                maskCells: maskCells,
                 maskPacked: maskPacked,
                 currentOccupiedPacked: occupiedPacked,
                 newPath: path,
@@ -1797,7 +1794,6 @@ class LevelGeneratorV2 {
   }
 
   static int _evalPlacement({
-    required List<List<int>> maskCells,
     required Set<int> maskPacked,
     required Set<int> currentOccupiedPacked,
     required List<List<int>> newPath,
@@ -1816,7 +1812,6 @@ class LevelGeneratorV2 {
         currentOccupiedPacked.length >= maskPacked.length * 0.5;
     if (!runLookAhead) return 0;
     return _countBlockedEmptyCells(
-      maskCells: maskCells,
       maskPacked: maskPacked,
       currentOccupiedPacked: currentOccupiedPacked,
       newPath: newPath,
@@ -1830,7 +1825,6 @@ class LevelGeneratorV2 {
     required int curVeryLongMin,
     required int curVeryLongMax,
     required int curLongMin,
-    required List<List<int>> maskCells,
     required Set<int> maskPacked,
     required Set<int> occupiedPacked,
     required int gridSize,
@@ -1857,7 +1851,6 @@ class LevelGeneratorV2 {
         );
         if (path != null && path.length >= minLen) {
           final bc = _evalPlacement(
-            maskCells: maskCells,
             maskPacked: maskPacked,
             currentOccupiedPacked: occupiedPacked,
             newPath: path,
@@ -2066,7 +2059,6 @@ class LevelGeneratorV2 {
   }
 
   static int _countBlockedEmptyCells({
-    required List<List<int>> maskCells,
     required Set<int> maskPacked,
     required Set<int> currentOccupiedPacked,
     required List<List<int>> newPath,
@@ -2093,15 +2085,32 @@ class LevelGeneratorV2 {
       }
     }
 
+    // Build the candidate set directly from what's actually "near" newPath
+    // (same row/col as a path cell, or orthogonally adjacent to one) rather
+    // than scanning every mask cell and filtering - bounds this to
+    // O(newPath.length * gridSize) instead of O(maskCells.length), which
+    // matters once this runs for every candidate in the Phase-1/2 fill loops.
+    final nearPacked = <int>{};
+    for (final row in rowsToCheck) {
+      for (int col = 0; col < gridSize; col++) {
+        final packed = row * 1000 + col;
+        if (maskPacked.contains(packed)) nearPacked.add(packed);
+      }
+    }
+    for (final col in colsToCheck) {
+      for (int row = 0; row < gridSize; row++) {
+        final packed = row * 1000 + col;
+        if (maskPacked.contains(packed)) nearPacked.add(packed);
+      }
+    }
+    for (final packed in adjacentKeys) {
+      if (maskPacked.contains(packed)) nearPacked.add(packed);
+    }
+
     int blocked = 0;
-    for (final cell in maskCells) {
-      final r = cell[0], c = cell[1];
-      final packed = r * 1000 + c;
+    for (final packed in nearPacked) {
+      final r = packed ~/ 1000, c = packed % 1000;
       if (isOccupied(packed)) continue;
-      final isNear = rowsToCheck.contains(r) ||
-          colsToCheck.contains(c) ||
-          adjacentKeys.contains(packed);
-      if (!isNear) continue;
 
       int emptyNeighbors = 0;
       for (final nb in [
