@@ -119,16 +119,9 @@ class LevelGeneratorV2 {
       );
     }
 
-    // Final strict DFS verification for small grids only.
-    if (level != null && !isLargeGrid) {
-      final strictSolution = LevelSolver.solve(level, 6000);
-      if (strictSolution == null) {
-        level = null;
-      } else {
-        level = level.copyWith(solutionOrder: strictSolution);
-      }
-    }
-
+    // Note: _attempt() already verifies solvability internally (DFS for
+    // small grids, greedy for large grids) and stamps solutionOrder before
+    // returning — no need to re-solve here.
     final result = level ?? _fallback(levelNumber, gridSize, mask, type);
     _warnIfFallback(result, levelNumber, maxAttempts);
     return result;
@@ -166,13 +159,8 @@ class LevelGeneratorV2 {
       );
     }
 
-    if (level != null && !isLargeGrid) {
-      final strictSolution = LevelSolver.solve(level, 6000);
-      if (strictSolution != null) {
-        level = level.copyWith(solutionOrder: strictSolution);
-      }
-    }
-
+    // Note: _attempt() already verifies solvability internally and stamps
+    // solutionOrder before returning — no need to re-solve here.
     final result = level ?? _fallback(levelNumber, gridSize, mask, type);
     _warnIfFallback(result, levelNumber, maxAttempts);
     if (patternName != null && patternName.isNotEmpty) {
