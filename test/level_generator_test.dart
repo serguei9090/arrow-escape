@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:arrow_escape/data/level_generator/level_generator_v2.dart';
+import 'package:arrow_escape/data/level_generator/mask_generator_v2.dart';
 import 'package:arrow_escape/data/level_generator/solver.dart';
 import 'package:arrow_escape/core/constants.dart';
 
@@ -112,6 +113,38 @@ void main() {
       expect(level1.arrows.length, equals(level2.arrows.length));
       expect(level1.gridSize, equals(level2.gridSize));
       expect(level1.patternName, equals(level2.patternName));
+    });
+
+    test(
+        'Boss/God level generation varies with session shape history, '
+        'but every result stays valid', () {
+      // Documents (and enforces) the actual, intentional contract for
+      // Boss/God levels: unlike Normal levels, repeated calls for the same
+      // level number are NOT guaranteed to return an identical level
+      // within one process, because shape selection consults a
+      // session-persistent no-repeat history queue. What must still hold
+      // regardless of which shape got picked: the shape comes from the
+      // real Boss/God pool, and the generated level is genuinely solvable.
+      const bossLevel = 7; // First Boss level (see AppConstants.levelTypeFor)
+      const godLevel = 10; // First God level
+      final bossShapeNames = MaskGeneratorV2.bossShapeNames.toSet();
+      final godShapeNames = MaskGeneratorV2.godShapeNames.toSet();
+
+      for (int i = 0; i < 3; i++) {
+        final boss = LevelGeneratorV2.generateLevel(bossLevel);
+        expect(bossShapeNames.contains(boss.maskShape.name), isTrue,
+            reason: 'Boss level $bossLevel used an unexpected shape '
+                '${boss.maskShape.name}');
+        expect(LevelSolver.solve(boss), isNotNull,
+            reason: 'Boss level $bossLevel attempt $i must be solvable');
+
+        final god = LevelGeneratorV2.generateLevel(godLevel);
+        expect(godShapeNames.contains(god.maskShape.name), isTrue,
+            reason: 'God level $godLevel used an unexpected shape '
+                '${god.maskShape.name}');
+        expect(LevelSolver.solve(god), isNotNull,
+            reason: 'God level $godLevel attempt $i must be solvable');
+      }
     });
 
     test('Arrow count increases with difficulty on average', () {
