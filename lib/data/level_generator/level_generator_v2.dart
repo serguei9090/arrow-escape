@@ -1241,6 +1241,13 @@ class LevelGeneratorV2 {
         final otherThanLock = Set<String>.from(allCells)
           ..removeAll(arrows[li].path.map((p) => '${p[0]},${p[1]}'));
 
+        // Cheap pre-filter (same as Pass 2/3) before the expensive full solve.
+        final keyClear =
+            _simulateExitClear(arrows[ki], gridSize, otherThanKey, orphanMap);
+        final lockClear = _simulateExitClear(
+            arrows[li], gridSize, otherThanLock, orphanMap);
+        if (!keyClear || !lockClear) continue;
+
         final oldKi = arrows[ki], oldLi = arrows[li];
         arrows[ki] = arrows[ki].copyWith(
             mechanic: SnakeMechanic.colorLock, colorGroup: actualPairs);
