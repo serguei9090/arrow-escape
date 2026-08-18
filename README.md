@@ -117,6 +117,49 @@ ADMOB_REWARDED_ID=ca-app-pub-3940256099942544/5224354917
 
 ---
 
+---
+
+## 🎨 Custom PNG Shape Mask Guidelines & AI Prompt Template
+
+When generating custom shapes for the **Arrow Escape Level Generator** (using Midjourney, NanoBanana, DALL-E, or Stable Diffusion), puzzle solvability depends heavily on silhouette design.
+
+### 📐 Silhouette Design Rules for Puzzle Grids
+- **Chunky & Solid Bodies:** Avoid thin 1-pixel antennas, delicate ropes, whiskers, or hair strands. The generator needs cells that can fit at least 2-cell to 5-cell arrow paths.
+- **No Hollow Lattices:** Fill internal areas solid. Avoid intricate wireframe details.
+- **High Contrast / Flat Black on Pure Transparent or White Background:** Clean edges allow the alpha/luminance parser to map pixels accurately to the grid.
+- **Square 1:1 Aspect Ratio:** Center the object with ~10% margin padding.
+
+---
+
+### 🤖 Master AI Prompt Template (NanoBanana / Midjourney / DALL-E)
+
+Copy and use this template, replacing `[SUBJECT]` with your desired object:
+
+```text
+A minimal, solid flat black silhouette icon of a [SUBJECT], bold chunky vector glyph style, thick solid filled geometric silhouette, clean smooth outer contours, stencil pictogram, flat 2D graphic design, no thin lines, no fine details, no internal holes, pure black silhouette on clean pure solid white background, high contrast, centered, 1:1 square aspect ratio
+```
+
+#### 🚫 Negative Prompt (Crucial to avoid fragile generator artifacts):
+```text
+thin lines, delicate details, wireframe, sketch, shading, gradients, 3D, photorealistic, textures, crosshatch, noise, hollow lines, broken shapes, antenna, whiskers, ropes, lattice
+```
+
+---
+
+### 💡 Example Prompts by Theme
+
+| Theme | Prompt |
+|---|---|
+| **Simple Cargo / Viking Ship** | `A minimal, solid flat black silhouette icon of a simple cargo ship boat with a bold sail and thick hull, bold chunky vector glyph style, thick solid filled geometric silhouette, clean smooth outer contours, stencil pictogram, flat 2D graphic design, no thin lines, no ropes, pure black silhouette on clean solid white background, high contrast, centered, 1:1 square` |
+| **Cozy House / Cottage** | `A minimal, solid flat black silhouette icon of a cozy house cottage with a chimney and triangular roof, bold chunky vector glyph style, solid filled silhouette, flat 2D pictogram, clean contours, no thin lines, pure black on solid white background, centered, 1:1 square` |
+| **Chunky Dog / Puppy** | `A minimal, solid flat black silhouette icon of a chunky standing labrador dog, bold solid filled silhouette, clean smooth contours, stylized pictogram, flat 2D vector graphic, no thin tail, no thin legs, no whiskers, pure black on solid white background, centered, 1:1 square` |
+| **Castle / Fortress** | `A minimal, solid flat black silhouette icon of a medieval fortress castle with battlements and towers, bold chunky blocky vector glyph, solid filled stencil pictogram, flat 2D graphic, pure black on solid white background, centered, 1:1 square` |
+| **Rocket / Spaceship** | `A minimal, solid flat black silhouette icon of a retro rocket spaceship with wide fins and chunky nose cone, bold solid filled silhouette, smooth contours, flat 2D pictogram, pure black on solid white background, centered, 1:1 square` |
+| **Broadsword / Shield** | `A minimal, solid flat black silhouette icon of a wide knight shield with a thick broadsword, bold chunky vector glyph, solid filled flat silhouette, no thin spikes, pure black on solid white background, centered, 1:1 square` |
+
+---
+
 ## Acknowledgments & Credits
 
 This project is an MIT-licensed fork of the original [Arrow Escape](https://github.com/gtxPrime/arrow-escape) created by [gtxPrime](https://github.com/gtxPrime).
+
