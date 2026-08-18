@@ -567,6 +567,7 @@ class LevelGeneratorV2 {
             curVeryLongMin: curVeryLongMin,
             curVeryLongMax: curVeryLongMax,
             curLongMin: curLongMin,
+            maskCells: maskCells,
             maskPacked: maskPacked,
             occupiedPacked: occupiedPacked,
             gridSize: gridSize,
@@ -1755,8 +1756,17 @@ class LevelGeneratorV2 {
     required List<List<int>> newPath,
     required int gridSize,
   }) {
-    final bool runLookAhead = gridSize < 20 &&
-        currentOccupiedPacked.length >= maskPacked.length * 0.7;
+    // Was gated to gridSize < 20 and 70%+ filled, meaning most of the fill
+    // process (and every grid size >= 20, which includes plenty of
+    // PNG-mask levels) got zero hole-avoidance scoring at all - candidates
+    // were picked without ever checking whether they'd wall off a cell.
+    // Widened so lookahead actually runs for the bulk of placement, on any
+    // grid size that doesn't already have large-grid relief applied
+    // elsewhere (see _largeGridReliefGridSize) - _countBlockedEmptyCells
+    // only scans cells near the new path, not the whole mask, so this
+    // stays cheap.
+    final bool runLookAhead = gridSize < _largeGridReliefGridSize &&
+        currentOccupiedPacked.length >= maskPacked.length * 0.5;
     if (!runLookAhead) return 0;
     return _countBlockedEmptyCells(
       maskCells: maskCells,
@@ -1773,6 +1783,7 @@ class LevelGeneratorV2 {
     required int curVeryLongMin,
     required int curVeryLongMax,
     required int curLongMin,
+    required List<List<int>> maskCells,
     required Set<int> maskPacked,
     required Set<int> occupiedPacked,
     required int gridSize,
@@ -1799,7 +1810,7 @@ class LevelGeneratorV2 {
         );
         if (path != null && path.length >= minLen) {
           final bc = _evalPlacement(
-            maskCells: [],
+            maskCells: maskCells,
             maskPacked: maskPacked,
             currentOccupiedPacked: occupiedPacked,
             newPath: path,
