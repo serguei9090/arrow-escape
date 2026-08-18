@@ -202,6 +202,51 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
     _flameGameKey.currentState?.resetGame();
   }
 
+  Future<void> _handleSavePressed(BuildContext context) async {
+    final isSolvable = _solveResult?.isSolvable ?? false;
+    if (isSolvable) {
+      widget.onSave(_buildCurrentLevelModel());
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1B1E28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(LucideIcons.alertTriangle, color: Colors.redAccent),
+        title: const Text('Level is UNSOLVABLE',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'The solver could not find a solution for this level as it '
+          'currently stands. Save it anyway?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save Anyway'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      widget.onSave(_buildCurrentLevelModel());
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSolvable = _solveResult?.isSolvable ?? false;
@@ -538,10 +583,7 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    widget.onSave(_buildCurrentLevelModel());
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () => _handleSavePressed(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.shade700,
                     foregroundColor: Colors.white,
