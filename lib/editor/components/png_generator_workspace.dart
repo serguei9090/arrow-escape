@@ -111,33 +111,47 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
         final name = s['name'] as String;
         final gridSize = s['grid'] as int;
 
-        final bytesData = await rootBundle.load(path);
-        final bytes = bytesData.buffer.asUint8List();
-        final parsedMask =
-            await WebFileHelper.parsePngToGridMask(bytes, gridSize);
+        try {
+          final bytesData = await rootBundle.load(path);
+          final bytes = bytesData.buffer.asUint8List();
+          final parsedMask =
+              await WebFileHelper.parsePngToGridMask(bytes, gridSize);
 
-        _pngMasks.add(
-          PngMaskModel(
-            id: 'mask_${DateTime.now().millisecondsSinceEpoch}_${_pngMasks.length}',
-            filename: name,
-            subfolder: '${gridSize}x$gridSize',
-            imageBytes: bytes,
-            gridSize: gridSize,
-            mask: parsedMask,
-          ),
-        );
-        addedCount++;
+          _pngMasks.add(
+            PngMaskModel(
+              id: 'mask_${DateTime.now().millisecondsSinceEpoch}_${_pngMasks.length}',
+              filename: name,
+              subfolder: '${gridSize}x$gridSize',
+              imageBytes: bytes,
+              gridSize: gridSize,
+              mask: parsedMask,
+            ),
+          );
+          addedCount++;
+        } catch (e) {
+          debugPrint('Could not load sample asset $path: $e');
+        }
       }
 
       setState(() {});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Successfully loaded $addedCount curated sample PNG shape masks!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (addedCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Successfully loaded $addedCount curated sample PNG shape masks!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Please do a Hot Restart (or refresh browser) to bundle newly added assets.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
