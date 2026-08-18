@@ -162,14 +162,28 @@ class LevelGeneratorV2 {
     final rng = customRng ?? Random(seed);
     final params = _paramsFor(levelNumber, gridSize, mask);
 
-    LevelModel? level;
     final bool isLargeGrid = gridSize > 20;
     final int maxAttempts =
         isLargeGrid ? (type == LevelType.normal ? 100 : 150) : 100;
 
-    for (int attempt = 0;
-        attempt < maxAttempts && level == null;
-        attempt++) {
+    // PNG-mask levels want the art fully solid - any leftover orphan-dot
+    // cell is a hole in the imported silhouette. A hard "reject unless
+    // zero orphans" gate sounds right but empirically never once succeeds
+    // within the attempt budget across a range of shapes/sizes - it just
+    // burns the whole (large, retry-until-any-success-sized) budget every
+    // time. So this is two bounded phases instead: (1) the original
+    // "stop at the first valid attempt" behavior, same cost as before any
+    // of this - most levels succeed within the first handful of attempts;
+    // (2) a small, separately-bounded number of *extra* attempts
+    // specifically hunting for fewer orphans than that first success,
+    // stopping immediately if a perfect (zero-orphan) one turns up.
+    // Procedural generateLevel() doesn't do either of this - orphan dots
+    // there are an intended difficulty mechanic, not an art-fidelity
+    // issue to minimize.
+    LevelModel? level;
+    int bestOrphanCount = 1 << 30;
+    int attempt = 0;
+    for (; attempt < maxAttempts && level == null; attempt++) {
       if (isCancelled?.call() ?? false) break;
       level = _attempt(
         levelNumber: levelNumber,
@@ -181,18 +195,63 @@ class LevelGeneratorV2 {
         maskShape: MaskShape.square,
         attempt: attempt,
       );
+      if (level != null) bestOrphanCount = level.orphanDots.length;
+    }
+
+    if (level != null && bestOrphanCount > 0) {
+      const int polishAttempts = 15;
+      for (int i = 0;
+          i < polishAttempts && attempt < maxAttempts && bestOrphanCount > 0;
+          i++, attempt++) {
+        if (isCancelled?.call() ?? false) break;
+        final candidate = _attempt(
+          levelNumber: levelNumber,
+          gridSize: gridSize,
+          mask: mask,
+          params: params,
+          type: type,
+          rng: rng,
+          maskShape: MaskShape.square,
+          attempt: attempt,
+        );
+        if (candidate == null) continue;
+        final orphanCount = candidate.orphanDots.length;
+        if (orphanCount < bestOrphanCount) {
+          bestOrphanCount = orphanCount;
+          level = candidate;
+        }
+      }
+    }
+
+    if (level != null && bestOrphanCount > 0) {
+      debugPrint('⚠️ LevelGeneratorV2: Level $levelNumber PNG mask could not '
+          'reach a zero-orphan layout in $attempt attempts - accepted '
+          'the best one found, with $bestOrphanCount orphan dot(s).');
+      _log('Level $levelNumber: best-effort accepted after $attempt '
+          'attempts, $bestOrphanCount orphan(s) remain\n');
     }
 
     // Note: _attempt() already verifies solvability internally and stamps
     // solutionOrder before returning — no need to re-solve here.
-    final result = level ?? _fallback(levelNumber, gridSize, mask, type);
+    var result = level ?? _fallback(levelNumber, gridSize, mask, type);
+    if (level != null &&
+        bestOrphanCount > 0 &&
+        result.patternName != 'fallback') {
+      result = result.copyWith(patternName: 'orphan-relief: ${result.patternName}');
+    }
     _warnIfFallback(result, levelNumber, maxAttempts);
     if (patternName != null && patternName.isNotEmpty) {
-      // Preserve the fallback marker even when the caller renames the pattern,
-      // so downstream tooling can still detect a degenerate level.
-      final taggedName = result.patternName == 'fallback'
-          ? 'fallback: $patternName'
-          : patternName;
+      // Preserve the fallback/orphan-relief marker even when the caller
+      // renames the pattern, so downstream tooling can still detect a
+      // degenerate or imperfect level.
+      final String taggedName;
+      if (result.patternName == 'fallback') {
+        taggedName = 'fallback: $patternName';
+      } else if (result.patternName.startsWith('orphan-relief:')) {
+        taggedName = 'orphan-relief: $patternName';
+      } else {
+        taggedName = patternName;
+      }
       return result.copyWith(patternName: taggedName);
     }
     return result;
@@ -867,49 +926,16 @@ class LevelGeneratorV2 {
                 repaired = true;
                 break outer;
               }
-
-              // Expensive fallback: not immediately fireable, but may still
-              // be genuinely solvable once other arrows clear first -
-              // verify with a bounded real solve instead of assuming dead.
-              for (final (hr, hc, tailR, tailC, dir) in candidates) {
-                final candidateArrow = ArrowModel(
-                  id: 'a_${levelNumber}_$counter',
-                  row: hr,
-                  col: hc,
-                  direction: dir,
-                  isPartOfPattern: true,
-                  path: [
-                    [hr, hc],
-                    [tailR, tailC]
-                  ],
-                  mechanic: SnakeMechanic.standard,
-                );
-                final tempArrows = [...arrows, candidateArrow];
-                final tempLevel = LevelModel(
-                  levelNumber: levelNumber,
-                  gridSize: gridSize,
-                  arrows: tempArrows,
-                  patternName: 'temp',
-                  difficulty: Difficulty.easy,
-                  mask: tempArrows
-                      .expand((a) => a.path.map((p) => '${p[0]},${p[1]}'))
-                      .toSet(),
-                  orphanDots: const [],
-                );
-                final solvable = gridSize > 20
-                    ? _greedySolve(tempLevel) != null
-                    : LevelSolver.solve(tempLevel, 1500) != null;
-                if (solvable) {
-                  counter++;
-                  arrows.add(candidateArrow);
-                  occupied.add('$hr,$hc');
-                  occupied.add('$tailR,$tailC');
-                  occupiedPacked.add(hr * 1000 + hc);
-                  occupiedPacked.add(tailR * 1000 + tailC);
-                  repaired = true;
-                  break outer;
-                }
-              }
+              // Not immediately fireable in either orientation - leave it
+              // for the next repair iteration (a different pairing may free
+              // it up) or, if nothing more can be repaired, as an orphan
+              // dot. (A "try a bounded real solve instead of assuming
+              // dead" fallback was tried here but is too expensive to run
+              // on every attempt - a single candidate check can cost
+              // thousands of DFS states against a near-full board, and
+              // this runs per residual pair per attempt across the whole
+              // budget. The cheap check above already captures most of the
+              // win at a fraction of the cost.)
             }
           }
         }

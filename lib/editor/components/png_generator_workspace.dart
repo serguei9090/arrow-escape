@@ -290,9 +290,11 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
       _generationProgress = targetLevelNum / _targetTotalLevelCount;
 
       final isFallback = level.patternName.startsWith('fallback');
+      final isOrphanRelief = level.patternName.startsWith('orphan-relief');
       _logBuffer.writeln(
-          'L#$targetLevelNum [$levelSourceTag] | ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | ${level.gridSize}x${level.gridSize}'
-          '${isFallback ? ' | ⚠️ FALLBACK (generation exhausted all attempts)' : ''}');
+          'L#$targetLevelNum [$levelSourceTag] | ${isSolvable ? "SOLVABLE" : "UNSOLVABLE"} | ${level.arrows.length} Arrows | ${level.gridSize}x${level.gridSize} | ${level.orphanDots.length} orphan dot(s)'
+          '${isFallback ? ' | ⚠️ FALLBACK (generation exhausted all attempts)' : ''}'
+          '${isOrphanRelief ? ' | ⚠️ ORPHAN-RELIEF (could not reach zero-orphan layout)' : ''}');
 
       setState(() {});
       // This editor is web-only (see WebFileHelper's dart:html dependency),

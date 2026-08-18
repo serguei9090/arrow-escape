@@ -147,6 +147,8 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
         generatedLevel = generatedLevel.copyWith(solutionOrder: sol);
       }
       final isFallback = generatedLevel.patternName.startsWith('fallback');
+      final isOrphanRelief =
+          generatedLevel.patternName.startsWith('orphan-relief');
 
       levels.add(generatedLevel);
       _generatedCount++;
@@ -159,6 +161,7 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
         _appendLog(
             'Generated level $i/$_targetLevelCount [${diff.name.toUpperCase()}] - Solvable: $isSolvable'
             '${isFallback ? ' | ⚠️ FALLBACK' : ''}'
+            '${isOrphanRelief ? ' | ⚠️ ORPHAN-RELIEF' : ''}'
             '${!isSolvable ? ' | ⚠️ UNSOLVABLE' : ''}');
         await Future.delayed(const Duration(milliseconds: 5));
       } else {
