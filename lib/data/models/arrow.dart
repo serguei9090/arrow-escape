@@ -98,11 +98,11 @@ enum ArrowState {
 
 class ArrowModel {
   final String id;
-  int row;
-  int col;
-  ArrowDirection direction;
-  ArrowState state;
-  bool isPartOfPattern; // Whether this arrow is part of the target shape
+  final int row;
+  final int col;
+  final ArrowDirection direction;
+  final ArrowState state;
+  final bool isPartOfPattern; // Whether this arrow is part of the target shape
 
   /// path[0] = head (has the arrowhead), path[last] = tail.
   /// Each consecutive pair is orthogonally adjacent (differs by exactly 1 row or col).
