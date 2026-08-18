@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/editor_state.dart';
 import '../utils/web_file_helper.dart';
+import '../utils/png_progression_scheduler.dart';
 import '../../data/level_binary_codec.dart';
 import '../../data/models/level.dart';
 import '../../data/level_generator/level_generator_v2.dart';
@@ -84,7 +85,38 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
         '=== Starting Bulk Generation Target: $_targetLevelCount Levels ===');
 
     final levels = <LevelModel>[];
-    final pngCount = _uploadedPngMasks.length;
+
+    // Analyze and profile uploaded PNG masks
+    final profiles = <MaskComplexityProfile>[];
+    if (_uploadedPngMasks.isNotEmpty) {
+      _appendLog(
+          'Analyzing and profiling ${_uploadedPngMasks.length} custom masks...');
+      for (int pIdx = 0; pIdx < _uploadedPngMasks.length; pIdx++) {
+        final item = _uploadedPngMasks[pIdx];
+        try {
+          final mask = await WebFileHelper.parsePngToGridMask(item.bytes, 25);
+          profiles.add(MaskComplexityProfile.analyze(
+            id: 'bulk_png_$pIdx',
+            name: item.name,
+            gridSize: 25,
+            mask: mask,
+          ));
+        } catch (_) {
+          profiles.add(MaskComplexityProfile.analyze(
+            id: 'bulk_png_$pIdx',
+            name: item.name,
+            gridSize: 25,
+            mask: {},
+          ));
+        }
+      }
+    }
+
+    final schedule = PngProgressionScheduler.scheduleProgression(
+      rawItems: _uploadedPngMasks,
+      profiles: profiles,
+      totalLevels: _targetLevelCount,
+    );
 
     for (int i = 1; i <= _targetLevelCount; i++) {
       if (_cancelRequested) {
@@ -99,31 +131,25 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
 
       Difficulty diff = Difficulty.forLevel(i);
       LevelModel generatedLevel;
-      bool Function() isCancelled = () => _cancelRequested;
+      bool isCancelled() => _cancelRequested;
 
-      // Tutorial levels 1-3 are mandatory/hand-authored and must never be
-      // overridden by an uploaded PNG mask (matches png_generator_workspace.dart).
-      // Non-tutorial levels consume uploaded PNGs in order starting from 0,
-      // so uploads aren't silently orphaned by the tutorial skip.
-      final pngIndex = i - AppConstants.tutorialLevels - 1;
+      final assignment = schedule[i - 1];
 
       if (i <= AppConstants.tutorialLevels) {
         generatedLevel = LevelGeneratorV2.generateLevel(i);
-      } else if (pngIndex < pngCount) {
+      } else if (assignment.hasCustomMask) {
         try {
-          final pngBytes = _uploadedPngMasks[pngIndex].bytes;
-          // Use the level's real target grid size, not a hardcoded value -
-          // the mask must match the arrows generateLevelWithMask places on it.
+          final item = assignment.customMaskItem!;
           final gridSize = AppConstants.gridSizeForLevel(i);
           final mask =
-              await WebFileHelper.parsePngToGridMask(pngBytes, gridSize);
+              await WebFileHelper.parsePngToGridMask(item.bytes, gridSize);
 
           if (mask.isNotEmpty) {
             generatedLevel = LevelGeneratorV2.generateLevelWithMask(
               levelNumber: i,
               gridSize: gridSize,
               mask: mask,
-              patternName: _uploadedPngMasks[pngIndex].name,
+              patternName: item.name,
               isCancelled: isCancelled,
             );
           } else {
@@ -265,8 +291,8 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
                       SizedBox(
                         width: 100,
                         child: TextField(
-                          controller: TextEditingController(
-                              text: '$_targetLevelCount'),
+                          controller:
+                              TextEditingController(text: '$_targetLevelCount'),
                           keyboardType: TextInputType.number,
                           onChanged: (val) {
                             final parsed = int.tryParse(val);
@@ -342,8 +368,8 @@ class _BulkGeneratorDialogState extends State<BulkGeneratorDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Progress: ${(_progress * 100).toStringAsFixed(1)}%',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12)),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
                   Text(
                       'Generated: $_generatedCount / $_targetLevelCount | Solvable: $_solvableCount',
                       style: const TextStyle(

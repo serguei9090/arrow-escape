@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/png_mask_model.dart';
 import '../models/editor_state.dart';
 import '../utils/web_file_helper.dart';
+import '../utils/png_progression_scheduler.dart';
 import '../components/interactive_level_canvas.dart';
 import '../../core/constants.dart';
 import '../../data/models/level.dart';
@@ -195,7 +196,12 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
     _logBuffer.writeln('──────────────────────────────────────────────\n');
 
     final generated = <LevelModel>[];
-    final remainingPngMasks = List<PngMaskModel>.from(_pngMasks);
+    final profiles = PngProgressionScheduler.profilePngMaskModels(_pngMasks);
+    final schedule = PngProgressionScheduler.scheduleProgression(
+      rawItems: _pngMasks,
+      profiles: profiles,
+      totalLevels: _targetTotalLevelCount,
+    );
 
     for (int targetLevelNum = 1;
         targetLevelNum <= _targetTotalLevelCount;
@@ -226,55 +232,36 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
       LevelModel level;
       String levelSourceTag;
 
+      final assignment = schedule[targetLevelNum - 1];
+
       if (targetLevelNum <= AppConstants.tutorialLevels) {
         // ── Mandatory Immutable Tutorial Levels 1, 2, 3 ──────────────────────
         level = LevelGeneratorV2.generateLevel(targetLevelNum);
         levelSourceTag = 'Mandatory Tutorial';
+      } else if (assignment.hasCustomMask &&
+          assignment.customMaskItem!.mask.isNotEmpty) {
+        // ── Scheduled Progression-Based Custom PNG Mask ───────────────────────
+        final pMask = assignment.customMaskItem!;
+        final pProfile = assignment.profile!;
+        level = LevelGeneratorV2.generateLevelWithMask(
+          levelNumber: targetLevelNum,
+          gridSize: pMask.gridSize,
+          mask: Set.from(pMask.mask),
+          patternName: pMask.filename,
+          isCancelled: () => _cancelRequested,
+        );
+        final tierTag = pProfile.tier == MaskComplexityTier.tier1Simple
+            ? 'T1-Simple'
+            : (pProfile.tier == MaskComplexityTier.tier2Medium
+                ? 'T2-Medium'
+                : 'T3-Detailed');
+        final heroTag = pProfile.isHeroShape ? ' [Hero]' : '';
+        levelSourceTag = 'PNG ($tierTag$heroTag: "${pMask.filename}")';
       } else {
-        // ── Custom PNG Mask or Procedural Generator Population ───────────────
-        final targetGridSize = AppConstants.gridSizeForLevel(targetLevelNum);
-
-        // Find best matching PNG mask for this level's grid size or complexity
-        int matchIdx = -1;
-        if (remainingPngMasks.isNotEmpty) {
-          // Exact grid match preferred
-          matchIdx =
-              remainingPngMasks.indexWhere((m) => m.gridSize == targetGridSize);
-          if (matchIdx == -1) {
-            // Closest grid size match
-            int minDiff = 999;
-            for (int k = 0; k < remainingPngMasks.length; k++) {
-              final diff =
-                  (remainingPngMasks[k].gridSize - targetGridSize).abs();
-              if (diff < minDiff) {
-                minDiff = diff;
-                matchIdx = k;
-              }
-            }
-          }
-        }
-
-        if (matchIdx != -1) {
-          final pMask = remainingPngMasks.removeAt(matchIdx);
-          if (pMask.mask.isNotEmpty) {
-            level = LevelGeneratorV2.generateLevelWithMask(
-              levelNumber: targetLevelNum,
-              gridSize: pMask.gridSize,
-              mask: Set.from(pMask.mask),
-              patternName: pMask.filename,
-              isCancelled: () => _cancelRequested,
-            );
-          } else {
-            level = LevelGeneratorV2.generateLevel(targetLevelNum,
-                isCancelled: () => _cancelRequested);
-          }
-          levelSourceTag = 'PNG Mask ("${pMask.filename}")';
-        } else {
-          // Procedural generation fallback via LevelGeneratorV2
-          level = LevelGeneratorV2.generateLevel(targetLevelNum,
-              isCancelled: () => _cancelRequested);
-          levelSourceTag = 'Procedural V2';
-        }
+        // ── Procedural Fallback via LevelGeneratorV2 ──────────────────────────
+        level = LevelGeneratorV2.generateLevel(targetLevelNum,
+            isCancelled: () => _cancelRequested);
+        levelSourceTag = 'Procedural V2';
       }
 
       // Verify solvability using LevelSolver
@@ -780,6 +767,18 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
   }
 
   Widget _buildPngMaskCard(PngMaskModel maskModel, int index) {
+    final profile = MaskComplexityProfile.analyze(
+      id: maskModel.id,
+      name: maskModel.filename,
+      gridSize: maskModel.gridSize,
+      mask: maskModel.mask,
+    );
+    final tierLabel = profile.tier == MaskComplexityTier.tier1Simple
+        ? 'T1: Simple'
+        : (profile.tier == MaskComplexityTier.tier2Medium
+            ? 'T2: Medium'
+            : 'T3: Detailed');
+
     // Generate a temporary level model to render the parsed grid mask preview
     final previewLevel = LevelModel(
       levelNumber: index + 1,
@@ -864,15 +863,39 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  maskModel.filename,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        maskModel.filename,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    if (profile.isHeroShape)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: Colors.amber.withValues(alpha: 0.5)),
+                        ),
+                        child: const Text(
+                          'HERO',
+                          style: TextStyle(
+                              color: Colors.amber,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -890,6 +913,22 @@ class _PngGeneratorWorkspaceState extends State<PngGeneratorWorkspace> {
                             color: Colors.indigoAccent,
                             fontSize: 10,
                             fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        tierLabel,
+                        style: const TextStyle(
+                            color: Colors.tealAccent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                     const Spacer(),
