@@ -800,6 +800,120 @@ class LevelGeneratorV2 {
         }
       }
 
+      // ── Repair pass — cover adjacent leftover-cell pairs ────────────────────
+      // Sub-passes 2b/2c above only place a pair if it's *immediately*
+      // fireable (_canExitClean). That's an overly strict proxy: a real
+      // solve doesn't need immediate fireability, only eventual fireability
+      // once other arrows clear first. Runs on every attempt (not just
+      // early ones) since it can only reduce the orphan-dot count, never
+      // hurt - and PNG-mask levels want as few leftover cells as possible.
+      {
+        bool repaired = true;
+        int repairGuard = 0;
+        while (repaired && repairGuard < maskCells.length) {
+          repaired = false;
+          repairGuard++;
+          final remainingEmpty = maskCells
+              .where((c) => !occupiedPacked.contains(c[0] * 1000 + c[1]))
+              .toList();
+          final remPacked =
+              remainingEmpty.map((c) => c[0] * 1000 + c[1]).toSet();
+
+          outer:
+          for (final cell in remainingEmpty) {
+            final r = cell[0], c = cell[1];
+            for (final nb in [
+              [-1, 0],
+              [1, 0],
+              [0, -1],
+              [0, 1]
+            ]) {
+              final tr = r + nb[0], tc = c + nb[1];
+              if (!remPacked.contains(tr * 1000 + tc)) continue;
+
+              final (dir1, dir2) = _oppositeDirsForOffset(nb);
+              final candidates = [
+                (r, c, tr, tc, dir1),
+                (tr, tc, r, c, dir2),
+              ];
+
+              // Cheap pass: immediately-fireable exit (matches how every
+              // other arrow in this fill is placed).
+              bool placed = false;
+              for (final (hr, hc, tailR, tailC, dir) in candidates) {
+                if (_canExitClean(hr, hc, dir, occupiedPacked, gridSize)) {
+                  arrows.add(ArrowModel(
+                    id: 'a_${levelNumber}_${counter++}',
+                    row: hr,
+                    col: hc,
+                    direction: dir,
+                    isPartOfPattern: true,
+                    path: [
+                      [hr, hc],
+                      [tailR, tailC]
+                    ],
+                    mechanic: SnakeMechanic.standard,
+                  ));
+                  occupied.add('$hr,$hc');
+                  occupied.add('$tailR,$tailC');
+                  occupiedPacked.add(hr * 1000 + hc);
+                  occupiedPacked.add(tailR * 1000 + tailC);
+                  placed = true;
+                  break;
+                }
+              }
+              if (placed) {
+                repaired = true;
+                break outer;
+              }
+
+              // Expensive fallback: not immediately fireable, but may still
+              // be genuinely solvable once other arrows clear first -
+              // verify with a bounded real solve instead of assuming dead.
+              for (final (hr, hc, tailR, tailC, dir) in candidates) {
+                final candidateArrow = ArrowModel(
+                  id: 'a_${levelNumber}_$counter',
+                  row: hr,
+                  col: hc,
+                  direction: dir,
+                  isPartOfPattern: true,
+                  path: [
+                    [hr, hc],
+                    [tailR, tailC]
+                  ],
+                  mechanic: SnakeMechanic.standard,
+                );
+                final tempArrows = [...arrows, candidateArrow];
+                final tempLevel = LevelModel(
+                  levelNumber: levelNumber,
+                  gridSize: gridSize,
+                  arrows: tempArrows,
+                  patternName: 'temp',
+                  difficulty: Difficulty.easy,
+                  mask: tempArrows
+                      .expand((a) => a.path.map((p) => '${p[0]},${p[1]}'))
+                      .toSet(),
+                  orphanDots: const [],
+                );
+                final solvable = gridSize > 20
+                    ? _greedySolve(tempLevel) != null
+                    : LevelSolver.solve(tempLevel, 1500) != null;
+                if (solvable) {
+                  counter++;
+                  arrows.add(candidateArrow);
+                  occupied.add('$hr,$hc');
+                  occupied.add('$tailR,$tailC');
+                  occupiedPacked.add(hr * 1000 + hc);
+                  occupiedPacked.add(tailR * 1000 + tailC);
+                  repaired = true;
+                  break outer;
+                }
+              }
+            }
+          }
+        }
+      }
+
       // Reject if adjacent empty cells remain (would leave unplayable orphan pairs)
       if (attempt < 10) {
         final remainingEmpty = maskCells
