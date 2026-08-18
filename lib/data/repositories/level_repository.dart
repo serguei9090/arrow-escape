@@ -23,7 +23,7 @@ LevelModel _generateLevelIsolate(int levelNumber) {
 class LevelRepository {
   final SharedPreferences? _prefs;
   final Map<int, LevelModel> _cache = {};
-  final Set<int> _generating = {};
+  final Map<int, Future<LevelModel?>> _inFlight = {};
 
   LevelBinaryDecoder? _binaryDecoder;
   bool _binaryLoaded = false;
@@ -96,42 +96,59 @@ class LevelRepository {
     return level;
   }
 
-  /// Asynchronously warm up [levelNumber] in a background isolate.
-  /// Safe to call multiple times — duplicates are ignored.
-  Future<void> preGenerateAsync(int levelNumber) async {
-    if (isCached(levelNumber)) return;
-    if (_generating.contains(levelNumber)) return;
-    _generating.add(levelNumber);
-
-    try {
-      // Binary asset covers it — decode directly (no isolate needed)
-      if (_binaryLoaded && _binaryDecoder != null) {
-        final level = _binaryDecoder!.decodeLevelByNumber(levelNumber);
-        if (level != null) {
-          _cache[levelNumber] = level;
-          return;
-        }
-      }
-
-      // Check disk cache before spinning up an isolate
-      if (_prefs != null && _prefs!.containsKey('cached_level_$levelNumber')) {
-        final jsonStr = _prefs!.getString('cached_level_$levelNumber');
-        if (jsonStr != null) {
-          final level = LevelModel.fromJson(jsonDecode(jsonStr));
-          _cache[levelNumber] = level;
-          return;
-        }
-      }
-
-      // Generate in a background isolate (only for levels beyond binary asset)
-      final level = await compute(_generateLevelIsolate, levelNumber);
-      _cache[levelNumber] = level;
-      _saveToDisk(levelNumber, level);
-    } catch (_) {
-      // Silently ignore — getLevel() will regenerate if needed
-    } finally {
-      _generating.remove(levelNumber);
+  /// Does the actual binary/disk/isolate lookup-or-generate work for
+  /// [levelNumber], sharing one in-flight Future across concurrent callers
+  /// so the same level is never generated twice in parallel. Returns null
+  /// only if generation itself threw (isolate spawn failure, serialization
+  /// issue, etc.) — callers decide how to handle that.
+  Future<LevelModel?> _generateAndCache(int levelNumber) {
+    if (_cache.containsKey(levelNumber)) {
+      return Future.value(_cache[levelNumber]);
     }
+    final existing = _inFlight[levelNumber];
+    if (existing != null) return existing;
+
+    final future = () async {
+      try {
+        // Binary asset covers it — decode directly (no isolate needed)
+        if (_binaryLoaded && _binaryDecoder != null) {
+          final level = _binaryDecoder!.decodeLevelByNumber(levelNumber);
+          if (level != null) {
+            _cache[levelNumber] = level;
+            return level;
+          }
+        }
+
+        // Check disk cache before spinning up an isolate
+        if (_prefs != null && _prefs!.containsKey('cached_level_$levelNumber')) {
+          final jsonStr = _prefs!.getString('cached_level_$levelNumber');
+          if (jsonStr != null) {
+            final level = LevelModel.fromJson(jsonDecode(jsonStr));
+            _cache[levelNumber] = level;
+            return level;
+          }
+        }
+
+        // Generate in a background isolate (only for levels beyond binary asset)
+        final level = await compute(_generateLevelIsolate, levelNumber);
+        _cache[levelNumber] = level;
+        _saveToDisk(levelNumber, level);
+        return level;
+      } catch (_) {
+        return null;
+      } finally {
+        _inFlight.remove(levelNumber);
+      }
+    }();
+
+    _inFlight[levelNumber] = future;
+    return future;
+  }
+
+  /// Asynchronously warm up [levelNumber] in a background isolate.
+  /// Safe to call multiple times — concurrent calls share the same work.
+  Future<void> preGenerateAsync(int levelNumber) async {
+    await _generateAndCache(levelNumber);
   }
 
   /// Asynchronously warm up a range of levels.
@@ -141,53 +158,19 @@ class LevelRepository {
     }
   }
 
-  /// Async get — returns immediately if cached/binary, otherwise waits for generation.
+  /// Async get — returns immediately if cached/binary, otherwise awaits the
+  /// same generation work preGenerateAsync would do (deduped via
+  /// _generateAndCache, so a concurrent preGenerateAsync call for the same
+  /// level never causes a second, independent generation to race it).
   Future<LevelModel> getLevelAsync(int levelNumber) async {
-    if (_cache.containsKey(levelNumber)) return _cache[levelNumber]!;
-
-    // Binary decode is synchronous O(1)
-    if (_binaryLoaded && _binaryDecoder != null) {
-      try {
-        final level = _binaryDecoder!.decodeLevelByNumber(levelNumber);
-        if (level != null) {
-          _cache[levelNumber] = level;
-          return level;
-        }
-      } catch (_) {}
-    }
-
-    // Disk cache
-    if (_prefs != null && _prefs!.containsKey('cached_level_$levelNumber')) {
-      final jsonStr = _prefs!.getString('cached_level_$levelNumber');
-      if (jsonStr != null) {
-        try {
-          final level = LevelModel.fromJson(jsonDecode(jsonStr));
-          _cache[levelNumber] = level;
-          return level;
-        } catch (_) {}
-      }
-    }
-
-    // Background generation
-    if (!_generating.contains(levelNumber)) {
-      unawaited(preGenerateAsync(levelNumber));
-    }
-    // preGenerateAsync swallows its own exceptions (compute() spawn
-    // failure, serialization issue, etc.) without populating the cache -
-    // without a cap this loop would then poll forever. Fall back to
-    // generating synchronously on this isolate if the background attempt
-    // hasn't landed within a generous timeout.
-    const maxWait = Duration(seconds: 5);
-    final deadline = DateTime.now().add(maxWait);
-    while (!_cache.containsKey(levelNumber)) {
-      if (DateTime.now().isAfter(deadline)) {
-        final level = LevelGeneratorV2.generateLevel(levelNumber);
-        _cache[levelNumber] = level;
-        break;
-      }
-      await Future.delayed(const Duration(milliseconds: 16));
-    }
-    return _cache[levelNumber]!;
+    final level = await _generateAndCache(levelNumber);
+    if (level != null) return level;
+    // _generateAndCache only returns null if generation itself threw
+    // (already swallowed) - fall back to a synchronous attempt so the
+    // caller still gets a level instead of an exception.
+    final fallback = LevelGeneratorV2.generateLevel(levelNumber);
+    _cache[levelNumber] = fallback;
+    return fallback;
   }
 
   /// True if [levelNumber] is instantly available (no generation needed).
