@@ -81,6 +81,13 @@ class FlameGamePreviewState extends State<FlameGamePreview> {
     });
   }
 
+  /// Instantly marks the level as cleared, skipping every arrow's slide-
+  /// and-exit animation, so the level-clear animation can be tuned without
+  /// playing through the whole solve first.
+  void solveInstantly() {
+    _gameState.instantWin();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AspectRatio(

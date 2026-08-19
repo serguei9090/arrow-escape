@@ -112,6 +112,20 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Testing/prototyping helper: skips the normal tap-by-tap flow and
+  /// instantly marks the level as cleared, bypassing every arrow's slide-
+  /// and-exit animation. Used by the level editor's "Solve Puzzle" button
+  /// to jump straight to the completion state for tuning the level-clear
+  /// animation without playing through the whole solve first.
+  void instantWin() {
+    if (_isComplete || _isGameOver) return;
+    _arrows.clear();
+    _consumedDotsByArrow.clear();
+    _isComplete = true;
+    onLevelComplete();
+    notifyListeners();
+  }
+
   /// Returns true if all remaining arrows are blocked (deadlocked).
   bool checkDeadlock() {
     if (_arrows.isEmpty) return false;

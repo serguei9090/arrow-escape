@@ -146,6 +146,18 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
     _flameGameKey.currentState?.resetGame();
   }
 
+  /// Jumps straight to the cleared state - skips every arrow's slide-and-
+  /// exit animation, for previewing/tuning the level-clear animation.
+  void _solvePuzzleInstantly() {
+    if (_solveResult == null || !_solveResult!.isSolvable) return;
+    _solveTimer?.cancel();
+    setState(() {
+      _isAutoSolving = false;
+      _currentSolveStepIndex = _solveResult!.solutionOrder.length;
+    });
+    _flameGameKey.currentState?.solveInstantly();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _importPngMask() async {
@@ -478,6 +490,23 @@ class _SingleLevelEditorDialogState extends State<SingleLevelEditorDialog> {
                             size: 18,
                           ),
                           tooltip: 'Reset Board Layout',
+                        ),
+
+                        const SizedBox(width: 2),
+
+                        // Solve Puzzle (instant) Button - jumps straight to
+                        // the cleared state to preview/tune the level-clear
+                        // animation without playing through the solve.
+                        IconButton(
+                          onPressed: isSolvable ? _solvePuzzleInstantly : null,
+                          icon: Icon(
+                            LucideIcons.zap,
+                            color: isSolvable
+                                ? Colors.greenAccent
+                                : Colors.white24,
+                            size: 18,
+                          ),
+                          tooltip: 'Solve Puzzle Instantly',
                         ),
 
                         const SizedBox(width: 6),
