@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,18 @@ class GridComponent extends PositionComponent {
 
   ui.Picture? _cachedDotGridPicture;
   bool _isDarkCached = AppColors.isDark;
+
+  // ── Level-clear dot-sweep animation ─────────────────────────────────────
+  // Pulses every silhouette dot with a color highlight, staggered outward
+  // from the grid's center to its border, when the level completes.
+  static const double _clearSweepDuration = 0.7; // center -> farthest dot
+  static const double _clearPulseDuration = 0.35; // each dot's own pulse
+  static const double _clearTotalDuration =
+      _clearSweepDuration + _clearPulseDuration;
+
+  bool _clearAnimStarted = false;
+  double _clearAnimTime = 0;
+  List<_ClearDot>? _clearDots;
 
   void _invalidateDotGrid() {
     _cachedDotGridPicture?.dispose();
@@ -84,6 +97,9 @@ class GridComponent extends PositionComponent {
     _refreshMask();
     _buildArrows();
     _invalidateDotGrid();
+    _clearAnimStarted = false;
+    _clearAnimTime = 0;
+    _clearDots = null;
   }
 
   void resize(double newGridPixelSize) {
@@ -126,6 +142,57 @@ class GridComponent extends PositionComponent {
     _cachedDotGridPicture = recorder.endRecording();
   }
 
+  void _startClearAnimation() {
+    final gridSize = gameState.level.gridSize;
+    final centerR = (gridSize - 1) / 2.0;
+    final centerC = (gridSize - 1) / 2.0;
+    final maxDist =
+        sqrt(centerR * centerR + centerC * centerC).clamp(0.0001, double.infinity);
+
+    final dots = <_ClearDot>[];
+    for (int r = 0; r < gridSize; r++) {
+      for (int c = 0; c < gridSize; c++) {
+        if (!_mask.contains('$r,$c')) continue;
+        final dist = sqrt(pow(r - centerR, 2) + pow(c - centerC, 2));
+        final delay = (dist / maxDist) * _clearSweepDuration;
+        dots.add(_ClearDot(row: r, col: c, delay: delay));
+      }
+    }
+    _clearDots = dots;
+    _clearAnimStarted = true;
+    _clearAnimTime = 0;
+  }
+
+  void _renderClearAnimation(Canvas canvas) {
+    final cs = cellSize;
+    final baseDot = (cs * 0.045).clamp(0.6, 1.6);
+    final baseColor =
+        AppColors.isDark ? const Color(0x3CFFFFFF) : const Color(0xFFC8BFB0);
+    final highlightColor = AppColors.accentGreen;
+
+    for (final dot in _clearDots!) {
+      final local = _clearAnimTime - dot.delay;
+      final center =
+          Offset((dot.col + 0.5) * cs, (dot.row + 0.5) * cs);
+
+      if (local <= 0) {
+        // Wave hasn't reached this dot yet - render it at rest.
+        canvas.drawCircle(
+            center, baseDot, Paint()..color = baseColor);
+        continue;
+      }
+
+      final t = (local / _clearPulseDuration).clamp(0.0, 1.0);
+      // Pulse: 0 -> 1 -> 0 scale envelope (ease out on the way up, ease in
+      // down), peaking at the pulse's midpoint.
+      final pulseEnvelope = sin(t * pi).clamp(0.0, 1.0);
+      final scale = 1.0 + pulseEnvelope * 1.8;
+      final color = Color.lerp(baseColor, highlightColor, pulseEnvelope)!;
+
+      canvas.drawCircle(center, baseDot * scale, Paint()..color = color);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  RENDER
   // ═══════════════════════════════════════════════════════════════════════════
@@ -134,20 +201,27 @@ class GridComponent extends PositionComponent {
   void render(Canvas canvas) {
     final cs = cellSize;
 
-    if (_cachedDotGridPicture == null || _isDarkCached != AppColors.isDark) {
-      _isDarkCached = AppColors.isDark;
-      _recacheDotGrid();
-    }
-    canvas.drawPicture(_cachedDotGridPicture!);
+    if (_clearAnimStarted) {
+      // Level cleared - the sweep animation replaces the static dot grid
+      // entirely. Orphan-dot redirect plates are irrelevant once the
+      // level is solved, so they're intentionally skipped here.
+      _renderClearAnimation(canvas);
+    } else {
+      if (_cachedDotGridPicture == null || _isDarkCached != AppColors.isDark) {
+        _isDarkCached = AppColors.isDark;
+        _recacheDotGrid();
+      }
+      canvas.drawPicture(_cachedDotGridPicture!);
 
-    // ── Orphan deflector dots (drawn on top of background dots) ────────────
-    final orphanDots = gameState.orphanDots;
-    for (final entry in orphanDots.entries) {
-      final parts = entry.key.split(',');
-      final dotR = int.parse(parts[0]);
-      final dotC = int.parse(parts[1]);
-      _drawOrphanDot(canvas, Offset((dotC + 0.5) * cs, (dotR + 0.5) * cs),
-          entry.value, cs);
+      // ── Orphan deflector dots (drawn on top of background dots) ──────────
+      final orphanDots = gameState.orphanDots;
+      for (final entry in orphanDots.entries) {
+        final parts = entry.key.split(',');
+        final dotR = int.parse(parts[0]);
+        final dotC = int.parse(parts[1]);
+        _drawOrphanDot(canvas, Offset((dotC + 0.5) * cs, (dotR + 0.5) * cs),
+            entry.value, cs);
+      }
     }
 
     super.render(canvas);
@@ -255,9 +329,25 @@ class GridComponent extends PositionComponent {
         _arrowComponents.remove(id);
       }
     }
+
+    if (gameState.isComplete && !_clearAnimStarted) {
+      _startClearAnimation();
+    }
+    if (_clearAnimStarted && _clearAnimTime < _clearTotalDuration) {
+      _clearAnimTime += dt;
+    }
   }
 
   void triggerArrowTap(String arrowId) {
     _arrowComponents[arrowId]?.triggerMove();
   }
+}
+
+/// A single silhouette dot's precomputed position in the level-clear sweep:
+/// [delay] is how far into the sweep (seconds) this dot's own pulse starts,
+/// derived from its distance from the grid's center.
+class _ClearDot {
+  final int row, col;
+  final double delay;
+  const _ClearDot({required this.row, required this.col, required this.delay});
 }
